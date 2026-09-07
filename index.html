@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>光球绕行 · 像素肉鸽</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" width="512" height="288"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="topbar">
+      <div id="vitals">
+        <div class="bar hp"><div class="fill" id="hpfill"></div><span class="lbl" id="hplbl">100</span></div>
+        <div class="bar mp"><div class="fill" id="mpfill"></div><span class="lbl" id="mplbl">100</span></div>
+        <div class="bar shield hidden" id="shieldbar"><div class="fill" id="shieldfill"></div><span class="lbl" id="shieldlbl">0</span></div>
+      </div>
+      <div id="galaxy">星系 <span id="galaxyNum">1</span>/6</div>
+      <div id="resources">
+        <div class="bar res"><div class="fill" id="resfill"></div></div>
+        <span id="resText">资源 0/20</span>
+      </div>
+      <div id="loadout">
+        <div class="slot" id="weaponSlot" title="武器"></div>
+        <div class="slot" id="passive0" title="被动1"></div>
+        <div class="slot" id="passive1" title="被动2"></div>
+      </div>
+    </div>
+    <div id="bossbar" class="hidden">
+      <div class="bosslbl" id="bossName">恒星守护者</div>
+      <div class="bar boss"><div class="fill" id="bossfill"></div></div>
+    </div>
+    <div id="toast"></div>
+  </div>
+
+  <!-- Overlays -->
+  <div id="overlay" class="overlay">
+    <div id="title" class="screen">
+      <h1>光球绕行</h1>
+      <p class="sub">像素风 · 肉鸽 · 星际流浪</p>
+      <div class="help">
+        <p>←→ / A D —— 绕行星移动</p>
+        <p>↑ / W / 空格 —— 跳跃 · 上升　↓ / S —— 下降</p>
+        <p>Shift / F —— 切换飞行　攻击为自动射击（靠近敌人即开火）</p>
+        <p>收集资源送回恒星 · 拾取装备对抗黑球 · 击败守护者前往下一星系</p>
+      </div>
+      <button id="startBtn">开始游戏 (Enter)</button>
+    </div>
+    <div id="pause" class="screen hidden"><h1>已暂停</h1><p>按 Esc / P 继续</p></div>
+    <div id="gameover" class="screen hidden"><h1>光球熄灭</h1><p id="goInfo"></p><button id="retryBtn">重试本星系 (Enter)</button></div>
+    <div id="galaxycomplete" class="screen hidden"><h1>星系完成</h1><p id="gcInfo"></p><p class="warp">正在跃迁到下一星系…</p></div>
+    <div id="victory" class="screen hidden"><h1>流浪终结</h1><p id="winInfo"></p><button id="againBtn">再玩一次 (Enter)</button></div>
+    <div id="upgrade" class="screen hidden">
+      <h1>星系准备</h1>
+      <p class="sub" id="upgTitle">准备进入星系</p>
+      <div id="upgResource">可用资源：0</div>
+      <div id="upgList"></div>
+      <button id="departBtn">出发 · 进入星系 (Enter)</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/input.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/galaxy.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
