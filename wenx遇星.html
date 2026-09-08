@@ -188,7 +188,7 @@ button:hover { background:#ffe066; }
         <p>↑ / W / 空格 —— 跳跃 · 上升　↓ / S —— 下降</p>
         <p>Shift / F —— 切换飞行　攻击为自动射击（靠近敌人即开火）</p>
         <p>收集资源送回恒星 · 拾取装备对抗黑球 · 击败守护者前往下一星系</p>
-        <p>资源 2:1 兑换金币 · 金币 40:1 兑换钻石 · 金币加点生命/魔法/护盾 · 钻石加点高阶辅助与装备栏 · 每死亡 3 次获 1 次免费加点</p>
+        <p>死亡/通关资源自动兑换金币(2:1) · 金币 20:1 兑换钻石 · 金币加点生命/魔法/护盾 · 钻石加点高阶辅助与装备栏 · 每死亡 3 次获 1 次免费加点</p>
       </div>
       <button id="startBtn">开始游戏 (Enter)</button>
     </div>
@@ -199,12 +199,8 @@ button:hover { background:#ffe066; }
       <div class="conv">
         <p id="goWallets" class="wallet">资源 0 · 金币 0 · 钻石 0 · 免费加点 0</p>
         <div class="conv-row">
-          <button class="conv-btn" id="resOneBtn">兑换 1 金币 (2资源)</button>
-          <button class="conv-btn" id="resAllBtn">资源全部兑换 (2:1)</button>
-        </div>
-        <div class="conv-row">
-          <button class="conv-btn" id="convOneBtn">兑换 1 钻石 (40金币)</button>
-          <button class="conv-btn" id="convAllBtn">金币全部兑换 (40:1)</button>
+          <button class="conv-btn" id="convOneBtn">兑换 1 钻石 (20金币)</button>
+          <button class="conv-btn" id="convAllBtn">金币全部兑换 (20:1)</button>
         </div>
       </div>
       <button id="retryBtn">重试本星系 (Enter)</button>
@@ -218,12 +214,8 @@ button:hover { background:#ffe066; }
       <div id="upgResource">钻石 0 · 金币 0 · 免费加点 0</div>
       <div class="conv">
         <div class="conv-row">
-          <button class="conv-btn" id="upgResOneBtn">兑换 1 金币 (2资源)</button>
-          <button class="conv-btn" id="upgResAllBtn">资源全部兑换 (2:1)</button>
-        </div>
-        <div class="conv-row">
-          <button class="conv-btn" id="upgConvOneBtn">兑换 1 钻石 (40金币)</button>
-          <button class="conv-btn" id="upgConvAllBtn">金币全部兑换 (40:1)</button>
+          <button class="conv-btn" id="upgConvOneBtn">兑换 1 钻石 (20金币)</button>
+          <button class="conv-btn" id="upgConvAllBtn">金币全部兑换 (20:1)</button>
         </div>
       </div>
       <div id="upgList"></div>
@@ -327,9 +319,8 @@ const CONFIG = {
 
   // 经济系统：资源 / 金币 / 钻石 / 装备栏
   economy: {
-    resPerGold: 2,       // 2 资源 → 1 金币
-    goldPerDiamond: 40,  // 40 金币 → 1 钻石
-    deathLoss: 0.5,      // 死亡损失资源比例（金币与钻石不损失）
+    resPerGold: 2,       // 2 资源 → 1 金币（死亡/通关自动兑换）
+    goldPerDiamond: 20,  // 20 金币 → 1 钻石
     slotBase: 2,         // 基础装备栏数量
     slotMax: 5,          // 最大装备栏数量（= 2 基础 + 3 可购买）
     slotCost: 20,        // 每扩充 1 栏位所需钻石
@@ -1214,9 +1205,9 @@ const State = {
 
 // 跨星系持久进度（元进度）：金币 / 钻石 / 免费加点 / 装备栏 / 永久加点
 const Meta = {
-  resources: 0,     // 资源（闯关收集，死亡损失 50%）
-  gold: 0,          // 金币（资源 2:1 兑换，死亡不损失）
-  diamond: 0,       // 钻石（金币 40:1 兑换，死亡不损失）
+  resources: 0,     // 资源（闯关收集，死亡/通关自动兑换金币）
+  gold: 0,          // 金币（资源 2:1 自动兑换，死亡不损失）
+  diamond: 0,       // 钻石（金币 20:1 手动兑换，死亡不损失）
   deaths: 0,        // 累计死亡次数
   freePoints: 0,    // 免费加点次数（每死亡 N 次 +1）
   equipSlots: CONFIG.economy.slotBase,   // 当前装备栏数量
@@ -1489,11 +1480,10 @@ function gameOver(){
     Meta.freePoints++;
     freeMsg = `\n累计死亡 ${Meta.deaths} 次，获得 1 次免费加点！`;
   }
-  // 死亡损失 50% 资源（金币与钻石不损失）
-  const lost = Math.floor(Meta.resources * CONFIG.economy.deathLoss);
-  Meta.resources -= lost;
+  // 死亡自动将资源兑换为金币（2:1），金币与钻石不受损失
+  const gained = autoConvertResources();
   document.getElementById('goInfo').textContent =
-    `你在「${Galaxy.diff.name}」陨落，损失 ${lost} 资源（金币与钻石不受损失）。${freeMsg}`;
+    `你在「${Galaxy.diff.name}」陨落，资源已自动兑换为 ${gained} 金币。${freeMsg}`;
   refreshCurrency();
   showScreen('gameover');
 }
@@ -1507,10 +1497,14 @@ function galaxyComplete(){
   State.enemies = [];
   State.projectiles = [];
   State.ebullets = [];
+  // 通关自动将资源兑换为金币（2:1）
+  const gained = autoConvertResources();
+  const convMsg = gained > 0 ? `\n资源已自动兑换为 ${gained} 金币。` : '';
   const next = Galaxy.galaxyIndex + 1;
   document.getElementById('gcInfo').textContent = next >= CONFIG.galaxies.length
-    ? '所有星系已通关！'
-    : `已征服「${Galaxy.diff.name}」，即将前往「${CONFIG.galaxies[next].name}」`;
+    ? '所有星系已通关！' + convMsg
+    : `已征服「${Galaxy.diff.name}」，即将前往「${CONFIG.galaxies[next].name}」` + convMsg;
+  refreshCurrency();
   showScreen('galaxycomplete');
 }
 
@@ -1742,19 +1736,16 @@ function loadoutSummaryHTML(){
 }
 
 // —— 货币兑换 ——
-function convertResources(n){   // 资源 → 金币 (2:1)，n = 期望金币数或 'all'
+function autoConvertResources(){   // 资源 → 金币 (2:1)，死亡/通关时自动调用；返回获得的金币数
   const ratio = CONFIG.economy.resPerGold;
-  const max = Math.floor(Meta.resources / ratio);
-  const make = n === 'all' ? max : Math.min(n, max);
-  if (make <= 0) return;
+  const make = Math.floor(Meta.resources / ratio);
+  if (make <= 0) return 0;
   Meta.resources -= make * ratio;
   Meta.gold += make;
-  AudioFX.sfx('deposit');
-  refreshCurrency();
-  if (State.mode === 'upgrade') renderUpgradeScreen();
+  return make;
 }
 
-function convertGold(n){   // 金币 → 钻石 (40:1)，n = 期望钻石数或 'all'
+function convertGold(n){   // 金币 → 钻石 (20:1)，n = 期望钻石数或 'all'
   const ratio = CONFIG.economy.goldPerDiamond;
   const max = Math.floor(Meta.gold / ratio);
   const make = n === 'all' ? max : Math.min(n, max);
@@ -1780,12 +1771,8 @@ function setupUI(){
   document.getElementById('retryBtn').addEventListener('click', restartGalaxy);
   document.getElementById('againBtn').addEventListener('click', () => { showScreen('title'); State.mode = 'title'; });
   document.getElementById('goUpgradeBtn').addEventListener('click', () => { showUpgrade(); });
-  document.getElementById('resOneBtn').addEventListener('click', (e) => { convertResources(1); e.currentTarget.blur(); });
-  document.getElementById('resAllBtn').addEventListener('click', (e) => { convertResources('all'); e.currentTarget.blur(); });
   document.getElementById('convOneBtn').addEventListener('click', (e) => { convertGold(1); e.currentTarget.blur(); });
   document.getElementById('convAllBtn').addEventListener('click', (e) => { convertGold('all'); e.currentTarget.blur(); });
-  document.getElementById('upgResOneBtn').addEventListener('click', (e) => { convertResources(1); e.currentTarget.blur(); });
-  document.getElementById('upgResAllBtn').addEventListener('click', (e) => { convertResources('all'); e.currentTarget.blur(); });
   document.getElementById('upgConvOneBtn').addEventListener('click', (e) => { convertGold(1); e.currentTarget.blur(); });
   document.getElementById('upgConvAllBtn').addEventListener('click', (e) => { convertGold('all'); e.currentTarget.blur(); });
   buildUpgradeUI();
