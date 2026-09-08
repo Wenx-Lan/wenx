@@ -52,6 +52,7 @@ html, body {
 }
 #resources { display:flex; align-items:center; gap:7px; font-size:11px; }
 #resources .bar { width:110px; height:10px; }
+.res { color:#ffb020; }
 .coin { color:#ffd23f; }
 .diamond { color:#7bffd6; }
 
@@ -159,10 +160,11 @@ button:hover { background:#ffe066; }
       </div>
       <div id="galaxy">星系 <span id="galaxyNum">1</span>/6</div>
       <div id="resources">
+        <span id="resBank" class="res">资源 0</span>
         <span id="coinText" class="coin">金币 0</span>
         <span id="diamondText" class="diamond">钻石 0</span>
         <div class="bar res"><div class="fill" id="resfill"></div></div>
-        <span id="resText">资源 0/20</span>
+        <span id="resText">收集 0/20</span>
       </div>
       <div id="loadout">
         <div class="slot" id="weaponSlot" title="武器"></div>
@@ -185,8 +187,8 @@ button:hover { background:#ffe066; }
         <p>←→ / A D —— 绕行星移动</p>
         <p>↑ / W / 空格 —— 跳跃 · 上升　↓ / S —— 下降</p>
         <p>Shift / F —— 切换飞行　攻击为自动射击（靠近敌人即开火）</p>
-        <p>收集金币送回恒星 · 拾取装备对抗黑球 · 击败守护者前往下一星系</p>
-        <p>金币可 40:1 兑换钻石 · 钻石用于加点与扩充装备栏 · 每死亡 3 次获 1 次免费加点</p>
+        <p>收集资源送回恒星 · 拾取装备对抗黑球 · 击败守护者前往下一星系</p>
+        <p>资源 2:1 兑换金币 · 金币 40:1 兑换钻石 · 钻石用于加点与扩充装备栏 · 每死亡 3 次获 1 次免费加点</p>
       </div>
       <button id="startBtn">开始游戏 (Enter)</button>
     </div>
@@ -195,10 +197,14 @@ button:hover { background:#ffe066; }
       <h1>光球熄灭</h1>
       <p id="goInfo"></p>
       <div class="conv">
-        <p id="goWallets" class="wallet">金币 0 · 钻石 0 · 免费加点 0</p>
+        <p id="goWallets" class="wallet">资源 0 · 金币 0 · 钻石 0 · 免费加点 0</p>
+        <div class="conv-row">
+          <button class="conv-btn" id="resOneBtn">兑换 1 金币 (2资源)</button>
+          <button class="conv-btn" id="resAllBtn">资源全部兑换 (2:1)</button>
+        </div>
         <div class="conv-row">
           <button class="conv-btn" id="convOneBtn">兑换 1 钻石 (40金币)</button>
-          <button class="conv-btn" id="convAllBtn">全部兑换 (40:1)</button>
+          <button class="conv-btn" id="convAllBtn">金币全部兑换 (40:1)</button>
         </div>
       </div>
       <button id="retryBtn">重试本星系 (Enter)</button>
@@ -212,8 +218,12 @@ button:hover { background:#ffe066; }
       <div id="upgResource">钻石 0 · 金币 0 · 免费加点 0</div>
       <div class="conv">
         <div class="conv-row">
+          <button class="conv-btn" id="upgResOneBtn">兑换 1 金币 (2资源)</button>
+          <button class="conv-btn" id="upgResAllBtn">资源全部兑换 (2:1)</button>
+        </div>
+        <div class="conv-row">
           <button class="conv-btn" id="upgConvOneBtn">兑换 1 钻石 (40金币)</button>
-          <button class="conv-btn" id="upgConvAllBtn">全部兑换 (40:1)</button>
+          <button class="conv-btn" id="upgConvAllBtn">金币全部兑换 (40:1)</button>
         </div>
       </div>
       <div id="upgList"></div>
@@ -315,10 +325,11 @@ const CONFIG = {
     mpRegen:    { name:'魔法恢复', icon:'✧', base:3, growth:1, add:1.0,  desc:'魔法恢复 /s' },
   },
 
-  // 经济系统：金币 / 钻石 / 装备栏
+  // 经济系统：资源 / 金币 / 钻石 / 装备栏
   economy: {
-    convertRatio: 40,    // 40 金币 → 1 钻石
-    deathLoss: 0.5,      // 死亡损失金币比例（钻石不损失）
+    resPerGold: 2,       // 2 资源 → 1 金币
+    goldPerDiamond: 40,  // 40 金币 → 1 钻石
+    deathLoss: 0.5,      // 死亡损失资源比例（金币与钻石不损失）
     slotBase: 2,         // 基础装备栏数量
     slotMax: 5,          // 最大装备栏数量（= 2 基础 + 3 可购买）
     slotCost: 20,        // 每扩充 1 栏位所需钻石
@@ -1203,8 +1214,9 @@ const State = {
 
 // 跨星系持久进度（元进度）：金币 / 钻石 / 免费加点 / 装备栏 / 永久加点
 const Meta = {
-  gold: 0,          // 金币（闯关收集，死亡损失 50%）
-  diamond: 0,       // 钻石（永久，死亡不损失）
+  resources: 0,     // 资源（闯关收集，死亡损失 50%）
+  gold: 0,          // 金币（资源 2:1 兑换，死亡不损失）
+  diamond: 0,       // 钻石（金币 40:1 兑换，死亡不损失）
   deaths: 0,        // 累计死亡次数
   freePoints: 0,    // 免费加点次数（每死亡 N 次 +1）
   equipSlots: CONFIG.economy.slotBase,   // 当前装备栏数量
@@ -1400,7 +1412,7 @@ function upgEffectText(id, level){
 
 function renderUpgradeScreen(){
   document.getElementById('upgResource').textContent =
-    `钻石 ${Meta.diamond} · 金币 ${Meta.gold} · 免费加点 ${Meta.freePoints}`;
+    `资源 ${Meta.resources} · 金币 ${Meta.gold} · 钻石 ${Meta.diamond} · 免费加点 ${Meta.freePoints}`;
   document.getElementById('upgTitle').textContent = `准备进入第 ${Galaxy.galaxyIndex + 1} 星系 · ${Galaxy.diff.name}`;
   for (const id of Object.keys(CONFIG.upgrades)){
     const lvl = Meta.levels[id];
@@ -1460,7 +1472,7 @@ function setupGalaxy(){
   for (let i = 0; i < 2; i++) State.enemies.push(Galaxy.spawnEnemy());
 
   const d = Galaxy.diff;
-  State.toast(`${d.name} · 收集 ${d.goal} 金币唤醒恒星守护者`, 2.6);
+  State.toast(`${d.name} · 收集 ${d.goal} 资源唤醒恒星守护者`, 2.6);
 }
 
 function gameOver(){
@@ -1473,11 +1485,11 @@ function gameOver(){
     Meta.freePoints++;
     freeMsg = `\n累计死亡 ${Meta.deaths} 次，获得 1 次免费加点！`;
   }
-  // 死亡损失 50% 金币（钻石不损失）
-  const lost = Math.floor(Meta.gold * CONFIG.economy.deathLoss);
-  Meta.gold -= lost;
+  // 死亡损失 50% 资源（金币与钻石不损失）
+  const lost = Math.floor(Meta.resources * CONFIG.economy.deathLoss);
+  Meta.resources -= lost;
   document.getElementById('goInfo').textContent =
-    `你在「${Galaxy.diff.name}」陨落，损失 ${lost} 金币。${freeMsg}`;
+    `你在「${Galaxy.diff.name}」陨落，损失 ${lost} 资源（金币与钻石不受损失）。${freeMsg}`;
   refreshCurrency();
   showScreen('gameover');
 }
@@ -1589,7 +1601,7 @@ function enemyContact(){
 // —— 收集 / 上缴 ——
 function bankResources(n){
   State.resourcesBanked += n;
-  Meta.gold += n;   // 金币累计
+  Meta.resources += n;   // 资源累计（可 2:1 兑换金币）
   if (State.resourcesBanked >= Galaxy.diff.goal && !State.boss) triggerBoss();
 }
 
@@ -1620,7 +1632,7 @@ function depositAtStar(){
     const n = p.carried;
     bankResources(n);
     p.carried = 0;
-    State.toast(`+${n} 金币已送达恒星`);
+    State.toast(`+${n} 资源已送达恒星`);
     AudioFX.sfx('deposit');
     const sp = Galaxy.starPos();
     State.spawnParticles(sp.x, sp.y, CONFIG.colors.resource, 14, 80, 0.7);
@@ -1630,7 +1642,7 @@ function depositAtStar(){
 function triggerBoss(){
   State.boss = new Boss();
   State.boss.activate();
-  State.toast('金币已足够！恒星守护者出现！', 2.4);
+  State.toast('资源已足够！恒星守护者出现！', 2.4);
   AudioFX.sfx('warp');
 }
 
@@ -1726,8 +1738,20 @@ function loadoutSummaryHTML(){
 }
 
 // —— 货币兑换 ——
-function convertGold(n){   // n = 期望兑换的钻石数，或 'all' 表示全部可兑换
-  const ratio = CONFIG.economy.convertRatio;
+function convertResources(n){   // 资源 → 金币 (2:1)，n = 期望金币数或 'all'
+  const ratio = CONFIG.economy.resPerGold;
+  const max = Math.floor(Meta.resources / ratio);
+  const make = n === 'all' ? max : Math.min(n, max);
+  if (make <= 0) return;
+  Meta.resources -= make * ratio;
+  Meta.gold += make;
+  AudioFX.sfx('deposit');
+  refreshCurrency();
+  if (State.mode === 'upgrade') renderUpgradeScreen();
+}
+
+function convertGold(n){   // 金币 → 钻石 (40:1)，n = 期望钻石数或 'all'
+  const ratio = CONFIG.economy.goldPerDiamond;
   const max = Math.floor(Meta.gold / ratio);
   const make = n === 'all' ? max : Math.min(n, max);
   if (make <= 0) return;
@@ -1739,10 +1763,11 @@ function convertGold(n){   // n = 期望兑换的钻石数，或 'all' 表示全
 }
 
 function refreshCurrency(){
+  document.getElementById('resBank').textContent = `资源 ${Meta.resources}`;
   document.getElementById('coinText').textContent = `金币 ${Meta.gold}`;
   document.getElementById('diamondText').textContent = `钻石 ${Meta.diamond}`;
   const goW = document.getElementById('goWallets');
-  if (goW) goW.textContent = `金币 ${Meta.gold} · 钻石 ${Meta.diamond} · 免费加点 ${Meta.freePoints}`;
+  if (goW) goW.textContent = `资源 ${Meta.resources} · 金币 ${Meta.gold} · 钻石 ${Meta.diamond} · 免费加点 ${Meta.freePoints}`;
 }
 
 // —— UI ——
@@ -1751,8 +1776,12 @@ function setupUI(){
   document.getElementById('retryBtn').addEventListener('click', restartGalaxy);
   document.getElementById('againBtn').addEventListener('click', () => { showScreen('title'); State.mode = 'title'; });
   document.getElementById('goUpgradeBtn').addEventListener('click', () => { showUpgrade(); });
+  document.getElementById('resOneBtn').addEventListener('click', (e) => { convertResources(1); e.currentTarget.blur(); });
+  document.getElementById('resAllBtn').addEventListener('click', (e) => { convertResources('all'); e.currentTarget.blur(); });
   document.getElementById('convOneBtn').addEventListener('click', (e) => { convertGold(1); e.currentTarget.blur(); });
   document.getElementById('convAllBtn').addEventListener('click', (e) => { convertGold('all'); e.currentTarget.blur(); });
+  document.getElementById('upgResOneBtn').addEventListener('click', (e) => { convertResources(1); e.currentTarget.blur(); });
+  document.getElementById('upgResAllBtn').addEventListener('click', (e) => { convertResources('all'); e.currentTarget.blur(); });
   document.getElementById('upgConvOneBtn').addEventListener('click', (e) => { convertGold(1); e.currentTarget.blur(); });
   document.getElementById('upgConvAllBtn').addEventListener('click', (e) => { convertGold('all'); e.currentTarget.blur(); });
   buildUpgradeUI();
@@ -1809,12 +1838,13 @@ function updateHUD(){
     }
   }
   document.getElementById('galaxyNum').textContent = Galaxy.galaxyIndex + 1;
+  document.getElementById('resBank').textContent = `资源 ${Meta.resources}`;
   document.getElementById('coinText').textContent = `金币 ${Meta.gold}`;
   document.getElementById('diamondText').textContent = `钻石 ${Meta.diamond}`;
 
   const goal = Galaxy.diff ? Galaxy.diff.goal : 0;
   document.getElementById('resfill').style.width = (goal > 0 ? Math.min(100, State.resourcesBanked / goal * 100) : 0) + '%';
-  let resTxt = `资源 ${State.resourcesBanked}/${goal}`;
+  let resTxt = `收集 ${State.resourcesBanked}/${goal}`;
   if (p && p.carried > 0) resTxt += ` · 携带 ${p.carried}`;
   document.getElementById('resText').textContent = resTxt;
 
