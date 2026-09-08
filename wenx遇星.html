@@ -188,7 +188,7 @@ button:hover { background:#ffe066; }
         <p>↑ / W / 空格 —— 跳跃 · 上升　↓ / S —— 下降</p>
         <p>Shift / F —— 切换飞行　攻击为自动射击（靠近敌人即开火）</p>
         <p>收集资源送回恒星 · 拾取装备对抗黑球 · 击败守护者前往下一星系</p>
-        <p>资源 2:1 兑换金币 · 金币 40:1 兑换钻石 · 钻石用于加点与扩充装备栏 · 每死亡 3 次获 1 次免费加点</p>
+        <p>资源 2:1 兑换金币 · 金币 40:1 兑换钻石 · 金币加点生命/魔法/护盾 · 钻石加点高阶辅助与装备栏 · 每死亡 3 次获 1 次免费加点</p>
       </div>
       <button id="startBtn">开始游戏 (Enter)</button>
     </div>
@@ -314,15 +314,15 @@ const CONFIG = {
     maxD: 30,
   },
 
-  // 永久加点（消耗钻石购买）；equip 为全局伤害加成
+  // 永久加点：生命/魔法/护盾用金币，高阶辅助用钻石
   upgrades: {
-    maxHp:      { name:'生命上限', icon:'♥', base:2, growth:1, add:20,   desc:'最大生命' },
-    maxMp:      { name:'魔法上限', icon:'◆', base:2, growth:1, add:20,   desc:'最大魔法' },
-    shield:     { name:'护盾量',   icon:'⬡', base:3, growth:1, add:25,   desc:'最大护盾' },
-    equip:      { name:'攻击强化', icon:'⚔', base:4, growth:2, add:0.10, desc:'全局伤害' },
-    shieldRegen:{ name:'护盾恢复', icon:'↻', base:3, growth:1, add:1.0,  desc:'护盾恢复速度 /s' },
-    hpRegen:    { name:'生命恢复', icon:'✚', base:3, growth:1, add:1.0,  desc:'生命恢复 /s' },
-    mpRegen:    { name:'魔法恢复', icon:'✧', base:3, growth:1, add:1.0,  desc:'魔法恢复 /s' },
+    maxHp:      { name:'生命上限', icon:'♥', currency:'gold',    base:15, growth:10, add:20,   desc:'最大生命' },
+    maxMp:      { name:'魔法上限', icon:'◆', currency:'gold',    base:15, growth:10, add:20,   desc:'最大魔法' },
+    shield:     { name:'护盾量',   icon:'⬡', currency:'gold',    base:15, growth:10, add:25,   desc:'最大护盾' },
+    equip:      { name:'攻击强化', icon:'⚔', currency:'diamond', base:1,  growth:1,  add:0.10, desc:'全局伤害' },
+    shieldRegen:{ name:'护盾恢复', icon:'↻', currency:'diamond', base:1,  growth:1,  add:1.0,  desc:'护盾恢复速度 /s' },
+    hpRegen:    { name:'生命恢复', icon:'✚', currency:'diamond', base:1,  growth:1,  add:1.0,  desc:'生命恢复 /s' },
+    mpRegen:    { name:'魔法恢复', icon:'✧', currency:'diamond', base:1,  growth:1,  add:1.0,  desc:'魔法恢复 /s' },
   },
 
   // 经济系统：资源 / 金币 / 钻石 / 装备栏
@@ -1378,6 +1378,8 @@ function enterGalaxy(){
 }
 
 function buyUpgrade(id){
+  const u = CONFIG.upgrades[id];
+  const currency = u.currency || 'diamond';
   if (Meta.freePoints > 0){
     Meta.freePoints--;
     Meta.levels[id]++;
@@ -1385,8 +1387,8 @@ function buyUpgrade(id){
     renderUpgradeScreen();
   } else {
     const cost = Meta.cost(id);
-    if (Meta.diamond >= cost){
-      Meta.diamond -= cost;
+    if (Meta[currency] >= cost){
+      Meta[currency] -= cost;
       Meta.levels[id]++;
       AudioFX.sfx('pickup');
       renderUpgradeScreen();
@@ -1415,6 +1417,8 @@ function renderUpgradeScreen(){
     `资源 ${Meta.resources} · 金币 ${Meta.gold} · 钻石 ${Meta.diamond} · 免费加点 ${Meta.freePoints}`;
   document.getElementById('upgTitle').textContent = `准备进入第 ${Galaxy.galaxyIndex + 1} 星系 · ${Galaxy.diff.name}`;
   for (const id of Object.keys(CONFIG.upgrades)){
+    const u = CONFIG.upgrades[id];
+    const currency = u.currency || 'diamond';
     const lvl = Meta.levels[id];
     const cost = Meta.cost(id);
     const info = document.getElementById('upgInfo-' + id);
@@ -1425,8 +1429,8 @@ function renderUpgradeScreen(){
       btn.disabled = false;
       btn.classList.remove('disabled');
     } else {
-      btn.textContent = `升级 ${cost}💎`;
-      const afford = Meta.diamond >= cost;
+      btn.textContent = `升级 ${cost}${currency === 'gold' ? '金币' : '钻石'}`;
+      const afford = Meta[currency] >= cost;
       btn.disabled = !afford;
       btn.classList.toggle('disabled', !afford);
     }
