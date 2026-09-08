@@ -1,0 +1,1869 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>光球绕行 · 像素肉鸽</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html, body {
+  width:100%; height:100%;
+  background:#05060a; overflow:hidden;
+  font-family:"Courier New", ui-monospace, Menlo, Consolas, monospace;
+  color:#e8ecf4;
+}
+
+#stage {
+  position:relative; width:100%; height:100%;
+  display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 50% 42%, #0b0e1a 0%, #05060a 100%);
+}
+
+#game {
+  image-rendering:pixelated; image-rendering:crisp-edges;
+  width:100%; height:100%; object-fit:contain;
+  cursor:crosshair;
+}
+
+#hud { position:absolute; inset:0; pointer-events:none; }
+
+#topbar {
+  position:absolute; top:12px; left:12px; right:12px;
+  display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap;
+}
+
+.bar {
+  position:relative; width:120px; height:12px;
+  background:rgba(255,255,255,0.10); border:1px solid rgba(255,255,255,0.28);
+}
+.bar .fill { position:absolute; top:1px; left:1px; bottom:1px; width:50%; transition:width .08s linear; }
+.bar.hp .fill { background:linear-gradient(#ff5470,#c22b4a); }
+.bar.mp .fill { background:linear-gradient(#4a9dff,#2b5ec2); }
+.bar.shield .fill { background:linear-gradient(#7bffd6,#2b9e82); }
+.bar.res .fill { background:linear-gradient(#ffd23f,#c2941f); }
+.bar.boss .fill { background:linear-gradient(#ff5470,#7a1230); }
+.bar .lbl { position:absolute; inset:0; font-size:9px; line-height:12px; text-align:center; color:#fff; text-shadow:0 1px 0 #000; }
+
+#vitals { display:flex; flex-direction:column; gap:5px; }
+#galaxy {
+  font-size:12px; padding:2px 9px; letter-spacing:1px;
+  border:1px solid rgba(255,255,255,0.28); background:rgba(0,0,0,0.32);
+}
+#resources { display:flex; align-items:center; gap:7px; font-size:11px; }
+#resources .bar { width:110px; height:10px; }
+.coin { color:#ffd23f; }
+.diamond { color:#7bffd6; }
+
+#loadout { display:flex; gap:6px; margin-left:auto; }
+#passiveSlots { display:flex; gap:6px; }
+.slot {
+  min-width:30px; height:26px; padding:0 8px;
+  border:1px solid rgba(255,255,255,0.3); background:rgba(0,0,0,0.35);
+  font-size:11px; line-height:24px; text-align:center; white-space:nowrap;
+}
+.slot.weapon { border-color:#ffd23f; color:#ffe9a8; }
+.slot.empty { color:#5a6478; border-color:rgba(255,255,255,0.16); }
+
+#bossbar { position:absolute; top:66px; left:50%; transform:translateX(-50%); width:250px; }
+.bosslbl { text-align:center; font-size:11px; letter-spacing:3px; margin-bottom:3px; color:#ff5470; text-shadow:0 0 6px rgba(255,84,112,.5); }
+.bar.boss { width:100%; height:12px; }
+
+#toast {
+  position:absolute; top:29%; left:50%; transform:translateX(-50%);
+  font-size:16px; text-align:center; color:#fff; letter-spacing:1px;
+  text-shadow:0 0 6px #000, 0 0 14px #000; opacity:0; transition:opacity .2s;
+}
+
+.overlay {
+  position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(4,6,12,0.74);
+}
+.screen { text-align:center; max-width:480px; padding:20px; max-height:94vh; overflow-y:auto; }
+.screen h1 { font-size:34px; letter-spacing:5px; margin-bottom:12px; text-shadow:0 0 20px rgba(255,255,255,0.35); }
+.screen .sub { color:#9fb0d0; margin-bottom:18px; }
+.screen p { font-size:13px; line-height:2; color:#c7d0e0; }
+.screen .help {
+  margin:10px 0 20px; padding:10px 16px; text-align:left;
+  border:1px solid rgba(255,255,255,0.18); background:rgba(0,0,0,0.25);
+}
+.screen .warp { color:#ffd23f; animation:blink 1s steps(2) infinite; margin-top:14px; }
+
+button {
+  pointer-events:auto; margin-top:16px; padding:9px 22px;
+  font-size:14px; font-family:inherit; letter-spacing:2px;
+  color:#05060a; background:#ffd23f; border:none; cursor:pointer;
+}
+button:hover { background:#ffe066; }
+
+.hidden { display:none !important; }
+
+@keyframes blink { 50% { opacity:0.25; } }
+
+#upgResource { font-size:16px; color:#ffd23f; margin-bottom:14px; letter-spacing:1px; }
+#upgList { display:flex; flex-direction:column; gap:8px; margin:8px 0 4px; text-align:left; }
+.upg {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:8px 12px; border:1px solid rgba(255,255,255,0.18); background:rgba(0,0,0,0.28);
+}
+.upg-name { font-size:13px; letter-spacing:1px; width:110px; text-align:left; }
+.upg-info { font-size:12px; color:#9fb0d0; flex:1; text-align:left; }
+.upg-btn {
+  margin:0; padding:5px 12px; font-size:12px; letter-spacing:1px;
+  background:#3a4a7a; color:#e8ecf4;
+}
+.upg-btn:hover { background:#4a5f9a; }
+.upg-btn.disabled { background:#222a3a; color:#5a6478; cursor:not-allowed; }
+.upg-btn.disabled:hover { background:#222a3a; }
+
+/* 货币兑换 */
+.wallet { color:#ffd23f; font-size:13px; letter-spacing:1px; }
+.conv { margin:6px 0 4px; }
+.conv-row { display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }
+.conv-btn {
+  margin:4px 0; padding:6px 14px; font-size:12px; letter-spacing:1px;
+  background:#3a4a7a; color:#e8ecf4; font-family:inherit; border:none; cursor:pointer;
+}
+.conv-btn:hover { background:#4a5f9a; }
+
+/* 装备栏扩充 */
+#slotRow {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  margin:8px 0; padding:8px 12px;
+  border:1px solid rgba(255,255,255,0.18); background:rgba(0,0,0,0.28);
+}
+
+/* 装备栏已满弹窗 */
+.ep-current { margin:8px 0; text-align:left; }
+.ep-row { font-size:12px; color:#c7d0e0; padding:3px 0; letter-spacing:1px; }
+.ep-tag { display:inline-block; width:56px; color:#9fb0d0; }
+.ep-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:12px; }
+.ep-actions .upg-btn { margin:0; }
+.ep-actions .discard { background:#7a2a3a; }
+.ep-actions .discard:hover { background:#9a3a4a; }
+
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" width="512" height="288"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="topbar">
+      <div id="vitals">
+        <div class="bar hp"><div class="fill" id="hpfill"></div><span class="lbl" id="hplbl">100</span></div>
+        <div class="bar mp"><div class="fill" id="mpfill"></div><span class="lbl" id="mplbl">100</span></div>
+        <div class="bar shield hidden" id="shieldbar"><div class="fill" id="shieldfill"></div><span class="lbl" id="shieldlbl">0</span></div>
+      </div>
+      <div id="galaxy">星系 <span id="galaxyNum">1</span>/6</div>
+      <div id="resources">
+        <span id="coinText" class="coin">金币 0</span>
+        <span id="diamondText" class="diamond">钻石 0</span>
+        <div class="bar res"><div class="fill" id="resfill"></div></div>
+        <span id="resText">资源 0/20</span>
+      </div>
+      <div id="loadout">
+        <div class="slot" id="weaponSlot" title="武器"></div>
+        <div id="passiveSlots"></div>
+      </div>
+    </div>
+    <div id="bossbar" class="hidden">
+      <div class="bosslbl" id="bossName">恒星守护者</div>
+      <div class="bar boss"><div class="fill" id="bossfill"></div></div>
+    </div>
+    <div id="toast"></div>
+  </div>
+
+  <!-- Overlays -->
+  <div id="overlay" class="overlay">
+    <div id="title" class="screen">
+      <h1>光球绕行</h1>
+      <p class="sub">像素风 · 肉鸽 · 星际流浪</p>
+      <div class="help">
+        <p>←→ / A D —— 绕行星移动</p>
+        <p>↑ / W / 空格 —— 跳跃 · 上升　↓ / S —— 下降</p>
+        <p>Shift / F —— 切换飞行　攻击为自动射击（靠近敌人即开火）</p>
+        <p>收集金币送回恒星 · 拾取装备对抗黑球 · 击败守护者前往下一星系</p>
+        <p>金币可 40:1 兑换钻石 · 钻石用于加点与扩充装备栏 · 每死亡 3 次获 1 次免费加点</p>
+      </div>
+      <button id="startBtn">开始游戏 (Enter)</button>
+    </div>
+    <div id="pause" class="screen hidden"><h1>已暂停</h1><p>按 Esc / P 继续</p></div>
+    <div id="gameover" class="screen hidden">
+      <h1>光球熄灭</h1>
+      <p id="goInfo"></p>
+      <div class="conv">
+        <p id="goWallets" class="wallet">金币 0 · 钻石 0 · 免费加点 0</p>
+        <div class="conv-row">
+          <button class="conv-btn" id="convOneBtn">兑换 1 钻石 (40金币)</button>
+          <button class="conv-btn" id="convAllBtn">全部兑换 (40:1)</button>
+        </div>
+      </div>
+      <button id="retryBtn">重试本星系 (Enter)</button>
+      <button id="goUpgradeBtn">升级加点</button>
+    </div>
+    <div id="galaxycomplete" class="screen hidden"><h1>星系完成</h1><p id="gcInfo"></p><p class="warp">正在跃迁到下一星系…</p></div>
+    <div id="victory" class="screen hidden"><h1>流浪终结</h1><p id="winInfo"></p><button id="againBtn">再玩一次 (Enter)</button></div>
+    <div id="upgrade" class="screen hidden">
+      <h1>星系准备</h1>
+      <p class="sub" id="upgTitle">准备进入星系</p>
+      <div id="upgResource">钻石 0 · 金币 0 · 免费加点 0</div>
+      <div class="conv">
+        <div class="conv-row">
+          <button class="conv-btn" id="upgConvOneBtn">兑换 1 钻石 (40金币)</button>
+          <button class="conv-btn" id="upgConvAllBtn">全部兑换 (40:1)</button>
+        </div>
+      </div>
+      <div id="upgList"></div>
+      <div id="slotRow"></div>
+      <button id="departBtn">出发 · 进入星系 (Enter)</button>
+    </div>
+    <div id="equipPrompt" class="screen hidden">
+      <h1>装备栏已满</h1>
+      <p id="epPickup" class="sub"></p>
+      <div id="epCurrent" class="ep-current"></div>
+      <div id="epActions" class="ep-actions"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 全局配置：所有可调参数、武器、被动、6 个星系的难度缩放表
+const CONFIG = {
+  WIDTH: 512,
+  HEIGHT: 288,
+  CX: 256,
+  CY: 144,
+
+  player: {
+    radius: 6,
+    maxHp: 100,
+    maxMp: 100,
+    angAccel: 12,        // 角加速度 rad/s^2
+    maxAngVel: 2.2,      // 最大角速度 rad/s
+    angFriction: 16,     // 角减速度
+    jumpVel: 150,        // 跳跃径向速度 px/s
+    gravity: 320,        // 径向重力 px/s^2（指向行星中心）
+    flyAccel: 280,       // 飞行径向加速度
+    maxRadialVel: 105,   // 飞行最大径向速度
+    maxFall: 180,        // 最大下落速度
+    minAir: 8,           // 距行星核心最小距离（飞行下限）
+    maxAir: 150,         // 距行星核心最大距离（飞行上限）
+    flyDrain: 13,        // 飞行 MP 消耗 /s
+    mpRegen: 4.5,        // MP 回复 /s
+    shieldRegen: 1.5,    // 护盾回复 /s
+    invuln: 1.0,         // 受击无敌帧
+    pickupRadius: 20,
+    carryCap: 10,
+    autoAttackRange: 240, // 自动攻击：目标进入此距离才开火
+  },
+
+  enemy: {
+    crawlerRadius: 6,
+    flyerRadius: 5,
+    baseHp: 14,
+    baseSpeed: 34,       // 飞行者最大速度 px/s
+    crawlerAngSpeed: 0.9,// 爬行者角速度 rad/s
+    contactDamage: 13,
+    dropChance: 0.35,
+    flyerAccel: 150,
+    spawnInterval: 2.0,   // 敌人生成间隔秒数（越大生成越慢）
+  },
+
+  boss: {
+    radius: 18,
+    shootInterval: 2.1,
+    spawnInterval: 3.6,
+    bulletSpeed: 110,
+    bulletRadius: 4,
+    bulletDamage: 14,
+  },
+
+  weapons: {
+    pulse:  { name:'脉冲', icon:'◉', damage:9,  mp:5, cooldown:0.42, shots:1, spread:0,    speed:360, pierce:false, homing:false, radius:3,   life:1.4 },
+    scatter:{ name:'散射', icon:'✳', damage:6,  mp:8, cooldown:0.55, shots:3, spread:0.42, speed:340, pierce:false, homing:false, radius:3,   life:1.2 },
+    rapid:  { name:'连射', icon:'⚡', damage:4,  mp:3, cooldown:0.16, shots:1, spread:0,    speed:400, pierce:false, homing:false, radius:2.5, life:1.1 },
+    pierce: { name:'穿透', icon:'➤', damage:7,  mp:7, cooldown:0.5,  shots:1, spread:0,    speed:330, pierce:true,  homing:false, radius:3,   life:1.5 },
+    homing: { name:'追踪', icon:'◎', damage:8,  mp:7, cooldown:0.4,  shots:1, spread:0,    speed:250, pierce:false, homing:true,  radius:3,   life:1.6 },
+  },
+
+  passives: {
+    shield:  { name:'护盾', icon:'⬡', dmgMul:0.6 },
+    speed:   { name:'疾行', icon:'≫', speedMul:1.28 },
+    mpreg:   { name:'回蓝', icon:'✧', mpRegenMul:2.0 },
+    hpregen: { name:'回血', icon:'✚', hpRegen:3.0 },
+    magnet:  { name:'引力', icon:'❖', magnetMul:1.8 },
+  },
+
+  resource: {
+    radius: 4,
+    count: 20,
+    minD: 8,     // 距地表额外高度
+    maxD: 30,
+  },
+
+  // 永久加点（消耗钻石购买）；equip 为全局伤害加成
+  upgrades: {
+    maxHp:      { name:'生命上限', icon:'♥', base:2, growth:1, add:20,   desc:'最大生命' },
+    maxMp:      { name:'魔法上限', icon:'◆', base:2, growth:1, add:20,   desc:'最大魔法' },
+    shield:     { name:'护盾量',   icon:'⬡', base:3, growth:1, add:25,   desc:'最大护盾' },
+    equip:      { name:'攻击强化', icon:'⚔', base:4, growth:2, add:0.10, desc:'全局伤害' },
+    shieldRegen:{ name:'护盾恢复', icon:'↻', base:3, growth:1, add:1.0,  desc:'护盾恢复速度 /s' },
+    hpRegen:    { name:'生命恢复', icon:'✚', base:3, growth:1, add:1.0,  desc:'生命恢复 /s' },
+    mpRegen:    { name:'魔法恢复', icon:'✧', base:3, growth:1, add:1.0,  desc:'魔法恢复 /s' },
+  },
+
+  // 经济系统：金币 / 钻石 / 装备栏
+  economy: {
+    convertRatio: 40,    // 40 金币 → 1 钻石
+    deathLoss: 0.5,      // 死亡损失金币比例（钻石不损失）
+    slotBase: 2,         // 基础装备栏数量
+    slotMax: 5,          // 最大装备栏数量（= 2 基础 + 3 可购买）
+    slotCost: 20,        // 每扩充 1 栏位所需钻石
+    deathsPerPoint: 3,   // 每死亡 N 次获得 1 次免费加点
+  },
+
+  // 6 个星系：难度逐级递增
+  galaxies: [
+    { name:'晨曦星域', planetR:84, hue:195, goal:20, enemyMax:6,  enemySpeed:1.00, enemyHp:1.0, bossHp:120, terrainAmp:8,  enemyDrop:0.35, bossBullets:8  },
+    { name:'翡翠星域', planetR:88, hue:125, goal:26, enemyMax:7,  enemySpeed:1.15, enemyHp:1.35,bossHp:180, terrainAmp:10, enemyDrop:0.33, bossBullets:10 },
+    { name:'熔岩星域', planetR:86, hue:10,  goal:32, enemyMax:8,  enemySpeed:1.30, enemyHp:1.7, bossHp:260, terrainAmp:12, enemyDrop:0.31, bossBullets:12 },
+    { name:'冰封星域', planetR:92, hue:205, goal:38, enemyMax:9,  enemySpeed:1.45, enemyHp:2.1, bossHp:360, terrainAmp:11, enemyDrop:0.30, bossBullets:14 },
+    { name:'紫晶星域', planetR:90, hue:275, goal:45, enemyMax:10, enemySpeed:1.6,  enemyHp:2.6, bossHp:500, terrainAmp:13, enemyDrop:0.28, bossBullets:16 },
+    { name:'深渊星域', planetR:96, hue:300, goal:52, enemyMax:11, enemySpeed:1.8,  enemyHp:3.2, bossHp:680, terrainAmp:14, enemyDrop:0.26, bossBullets:18 },
+  ],
+
+  colors: {
+    bgTop: '#0c0f1c',
+    bgBottom: '#05060a',
+    player: '#fff6d8',
+    playerGlow: '#ffd54a',
+    enemy: '#10131c',
+    enemyEdge: '#05060a',
+    enemyGlow: '#3a1020',
+    resource: '#ffd23f',
+    resourceGlow: '#ffb020',
+    equip: '#ff6ad5',
+    projPlayer: '#ffffff',
+    projEnemy: '#ff5470',
+    star: '#fff3b0',
+    starGlow: '#ffe066',
+  },
+};
+
+</script>
+<script>
+// 数学与随机工具
+const Util = {
+  clamp(v, a, b){ return v < a ? a : (v > b ? b : v); },
+  lerp(a, b, t){ return a + (b - a) * t; },
+
+  wrapAngle(a){
+    const T = Math.PI * 2;
+    a = a % T;
+    return a < 0 ? a + T : a;
+  },
+
+  // 从 a 到 b 的最短有符号角差（弧度）
+  angleDiff(a, b){
+    let d = (b - a) % (Math.PI * 2);
+    if (d > Math.PI) d -= Math.PI * 2;
+    if (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  },
+
+  rand(a = 1, b){
+    if (b === undefined){ b = a; a = 0; }
+    return a + Math.random() * (b - a);
+  },
+  randInt(a, b){ return Math.floor(this.rand(a, b + 1)); },
+  pick(arr){ return arr[Math.floor(Math.random() * arr.length)]; },
+
+  dist(ax, ay, bx, by){
+    const dx = ax - bx, dy = ay - by;
+    return Math.sqrt(dx * dx + dy * dy);
+  },
+  angleTo(ax, ay, bx, by){ return Math.atan2(by - ay, bx - ax); },
+
+  // 极坐标转屏幕坐标：θ=0 为行星正上方，顺时针为正
+  polar(theta, d){
+    return { x: CONFIG.CX + Math.sin(theta) * d, y: CONFIG.CY - Math.cos(theta) * d };
+  },
+
+  // 可复现随机数生成器
+  mulberry32(seed){
+    let a = seed >>> 0;
+    return function(){
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  },
+
+  hexToRgba(hex, a){
+    const h = hex.replace('#', '');
+    const n = parseInt(h, 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return `rgba(${r},${g},${b},${a})`;
+  },
+};
+
+</script>
+<script>
+// 键盘 / 鼠标输入
+const Input = {
+  keys: new Set(),     // 当前按住的键 (e.code)
+  pressed: new Set(),  // 本帧刚按下的键
+  mouseX: 0, mouseY: 0,
+  mouseDown: false,
+
+  left: false, right: false, up: false, down: false,
+  attack: false, jump: false, toggleFly: false, pause: false, confirm: false,
+
+  init(){
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
+      AudioFX.init();
+      this.keys.add(e.code);
+      this.pressed.add(e.code);
+      if (e.code === 'KeyM') AudioFX.toggle();
+    });
+    window.addEventListener('keyup', (e) => { this.keys.delete(e.code); });
+    window.addEventListener('blur', () => { this.keys.clear(); });
+
+    const c = document.getElementById('game');
+    const rect = () => c.getBoundingClientRect();
+    c.addEventListener('mousemove', (e) => {
+      const r = rect();
+      this.mouseX = (e.clientX - r.left) / r.width * CONFIG.WIDTH;
+      this.mouseY = (e.clientY - r.top) / r.height * CONFIG.HEIGHT;
+    });
+    c.addEventListener('mousedown', () => { AudioFX.init(); this.mouseDown = true; });
+    window.addEventListener('mouseup', () => { this.mouseDown = false; });
+  },
+
+  // 每帧根据 keys/pressed 推导动作状态
+  update(){
+    this.left  = this.keys.has('ArrowLeft')  || this.keys.has('KeyA');
+    this.right = this.keys.has('ArrowRight') || this.keys.has('KeyD');
+    this.up    = this.keys.has('ArrowUp')    || this.keys.has('KeyW');
+    this.down  = this.keys.has('ArrowDown')  || this.keys.has('KeyS');
+    this.attack = this.keys.has('KeyJ') || this.keys.has('KeyZ') || this.mouseDown;
+    this.jump = this.pressed.has('ArrowUp') || this.pressed.has('KeyW') || this.pressed.has('Space');
+    this.toggleFly = this.pressed.has('ShiftLeft') || this.pressed.has('ShiftRight') || this.pressed.has('KeyF');
+    this.pause = this.pressed.has('Escape') || this.pressed.has('KeyP');
+    this.confirm = this.pressed.has('Enter') || this.pressed.has('Space');
+  },
+
+  endFrame(){ this.pressed.clear(); },
+};
+
+</script>
+<script>
+// 程序化 WebAudio 音效
+const AudioFX = {
+  ctx: null,
+  muted: false,
+
+  init(){
+    if (this.ctx) return;
+    try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  },
+
+  toggle(){
+    this.muted = !this.muted;
+    this.init();
+  },
+
+  play(freq, dur = 0.12, type = 'square', vol = 0.15, slide = 0){
+    if (this.muted) return;
+    if (!this.ctx) this.init();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.ctx.destination);
+    o.start(t); o.stop(t + dur);
+  },
+
+  sfx(name){
+    switch (name){
+      case 'shoot':    this.play(620, 0.08, 'square',   0.08, -220); break;
+      case 'hit':      this.play(140, 0.18, 'sawtooth', 0.14, -60);  break;
+      case 'enemyDie': this.play(90,  0.22, 'square',   0.16, -40);  break;
+      case 'collect':  this.play(880, 0.08, 'square',   0.10, 160);  break;
+      case 'deposit':  this.play(520, 0.14, 'triangle', 0.14, 220);  break;
+      case 'pickup':   this.play(660, 0.12, 'square',   0.12, 200);  break;
+      case 'jump':     this.play(300, 0.10, 'square',   0.07, 120);  break;
+      case 'bossHit':  this.play(200, 0.08, 'square',   0.10, -40);  break;
+      case 'bossDie':  this.play(70,  0.70, 'sawtooth', 0.20, -30);  break;
+      case 'warp':     this.play(440, 0.50, 'triangle', 0.14, 520);  break;
+      case 'win':      this.play(523, 0.60, 'triangle', 0.16, 523);  break;
+      case 'lose':     this.play(220, 0.50, 'sawtooth', 0.16, -160); break;
+    }
+  },
+};
+
+</script>
+<script>
+// 实体：光球(玩家)、黑球敌人、Boss、资源、装备、子弹、粒子、飘字
+
+class Player {
+  constructor(){
+    this.radius = CONFIG.player.radius;
+    this.maxHp = Meta.maxHp();
+    this.maxMp = Meta.maxMp();
+    this.maxShield = Meta.maxShield();
+    this.weapon = 'pulse';     // 初始武器
+    this.weaponLevel = 1;      // 武器等级
+    this.passives = [];        // [{ id, level }]
+    this.reset();
+  }
+
+  reset(){
+    this.theta = 0;                          // 恒星(行星正上方)出发
+    this.d = Galaxy.surfaceR(0) + this.radius;
+    this.dtheta = 0;
+    this.dd = 0;
+    this.hp = this.maxHp;
+    this.mp = this.maxMp;
+    this.shield = this.maxShield;
+    this.flying = false;
+    this.grounded = true;
+    this.facing = 1;
+    this.invuln = 0;
+    this.carried = 0;
+    this.attackCooldown = 0;
+    this.dead = false;
+    this.syncXY();
+  }
+
+  syncXY(){ const p = Util.polar(this.theta, this.d); this.x = p.x; this.y = p.y; }
+
+  passiveLevel(id){ const f = this.passives.find(p => p.id === id); return f ? f.level : 0; }
+  hasPassive(id){ return this.passiveLevel(id) > 0; }
+  speedMul(){ const lv = this.passiveLevel('speed'); return lv ? CONFIG.passives.speed.speedMul + 0.06 * (lv - 1) : 1; }
+  dmgMul(){ const lv = this.passiveLevel('shield'); return lv ? Math.max(0.25, CONFIG.passives.shield.dmgMul - 0.08 * (lv - 1)) : 1; }
+  mpRegenMul(){ const lv = this.passiveLevel('mpreg'); return lv ? CONFIG.passives.mpreg.mpRegenMul + 0.25 * (lv - 1) : 1; }
+  hpRegen(){ const lv = this.passiveLevel('hpregen'); return lv ? CONFIG.passives.hpregen.hpRegen + 1.5 * (lv - 1) : 0; }
+  pickupRadius(){ const lv = this.passiveLevel('magnet'); return CONFIG.player.pickupRadius * (lv ? CONFIG.passives.magnet.magnetMul + 0.2 * (lv - 1) : 1); }
+  weaponDmgMul(){ return 1 + 0.25 * (this.weaponLevel - 1); }
+
+  update(dt){
+    const c = CONFIG.player;
+
+    // —— 角向移动 ——
+    let dir = 0;
+    if (Input.left) dir -= 1;
+    if (Input.right) dir += 1;
+    const angAccel = c.angAccel * this.speedMul();
+    if (dir !== 0){
+      this.dtheta += dir * angAccel * dt;
+      this.dtheta = Util.clamp(this.dtheta, -c.maxAngVel, c.maxAngVel);
+      this.facing = dir;
+    } else {
+      const f = c.angFriction * dt;
+      if (Math.abs(this.dtheta) <= f) this.dtheta = 0;
+      else this.dtheta -= Math.sign(this.dtheta) * f;
+    }
+    this.theta = Util.wrapAngle(this.theta + this.dtheta * dt);
+
+    const surfR = Galaxy.surfaceR(this.theta) + this.radius;
+
+    // —— 径向移动 ——
+    if (this.flying){
+      let rdir = 0;
+      if (Input.up) rdir += 1;
+      if (Input.down) rdir -= 1;
+      this.dd += rdir * c.flyAccel * dt;
+      this.dd -= c.gravity * dt;
+      this.dd = Util.clamp(this.dd, -c.maxFall, c.maxRadialVel);
+      this.d += this.dd * dt;
+      this.d = Util.clamp(this.d, Galaxy.planetR + c.minAir, c.maxAir);
+      this.mp -= c.flyDrain * dt;
+      if (this.mp <= 0){ this.mp = 0; this.flying = false; }
+      this.grounded = false;
+      if (this.d <= surfR && this.dd <= 0){
+        this.d = surfR; this.dd = 0; this.grounded = true;
+      }
+      // 飞行拖尾粒子
+      if (Math.random() < 0.5){
+        const a = Math.atan2(CONFIG.CY - this.y, CONFIG.CX - this.x);
+        State.particles.push(new Particle(
+          this.x + Math.cos(a) * this.radius * -1,
+          this.y + Math.sin(a) * this.radius * -1,
+          Math.cos(a) * 30, Math.sin(a) * 30, 0.35, CONFIG.colors.playerGlow, 2
+        ));
+      }
+    } else {
+      if (this.grounded){
+        this.d = surfR;
+        if (Input.jump){
+          this.dd = c.jumpVel;
+          this.grounded = false;
+          AudioFX.sfx('jump');
+        }
+      } else {
+        this.dd -= c.gravity * dt;
+        this.d += this.dd * dt;
+        if (this.d <= surfR){ this.d = surfR; this.dd = 0; this.grounded = true; }
+      }
+    }
+
+    // —— 回复（含钻石加点的高阶恢复）——
+    this.mp = Math.min(this.maxMp, this.mp + (c.mpRegen * this.mpRegenMul() + Meta.mpRegen()) * dt);
+    const hr = this.hpRegen() + Meta.hpRegen();
+    if (hr > 0) this.hp = Math.min(this.maxHp, this.hp + hr * dt);
+    this.shield = Math.min(this.maxShield, this.shield + (c.shieldRegen + Meta.shieldRegen()) * dt);
+
+    this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+    this.invuln = Math.max(0, this.invuln - dt);
+    this.syncXY();
+  }
+
+  damage(amount, fromX, fromY){
+    if (this.invuln > 0 || this.dead) return;
+    let dmg = amount * this.dmgMul();
+    if (this.shield > 0){
+      const absorbed = Math.min(this.shield, dmg);
+      this.shield -= absorbed;
+      dmg -= absorbed;
+    }
+    this.hp -= dmg;
+    this.invuln = CONFIG.player.invuln;
+    this.dd += 60;                       // 受击小幅度弹起
+    State.addShake(4);
+    State.flash = 0.6;
+    AudioFX.sfx('hit');
+    State.spawnParticles(this.x, this.y, '#ff5470', 8, 90, 0.4);
+    if (this.hp <= 0){ this.hp = 0; this.dead = true; }
+  }
+
+  nearestTarget(){
+    let best = null, bd = 1e9;
+    for (const e of State.enemies){
+      const d = Util.dist(this.x, this.y, e.x, e.y);
+      if (d < bd){ bd = d; best = e; }
+    }
+    if (State.boss && !State.boss.dead){
+      const d = Util.dist(this.x, this.y, State.boss.x, State.boss.y);
+      if (d < bd){ bd = d; best = State.boss; }
+    }
+    return best;
+  }
+
+  tryAttack(){
+    if (!this.weapon || this.attackCooldown > 0) return;
+    const w = CONFIG.weapons[this.weapon];
+    if (!w || this.mp < w.mp) return;
+    const target = this.nearestTarget();
+    if (!target) return;
+    if (Util.dist(this.x, this.y, target.x, target.y) > CONFIG.player.autoAttackRange) return;
+    this.mp -= w.mp;
+    this.attackCooldown = w.cooldown;
+    const base = Util.angleTo(this.x, this.y, target.x, target.y);
+    const proj = { damage: w.damage * Meta.dmgMul() * this.weaponDmgMul(), pierce: w.pierce, homing: w.homing, radius: w.radius, life: w.life };
+    for (let i = 0; i < w.shots; i++){
+      const off = w.shots === 1 ? 0 : (i - (w.shots - 1) / 2) * w.spread;
+      const a = base + off;
+      State.projectiles.push(new Projectile(
+        this.x, this.y, Math.cos(a) * w.speed, Math.sin(a) * w.speed, proj
+      ));
+    }
+    AudioFX.sfx('shoot');
+  }
+}
+
+
+class Projectile {
+  constructor(x, y, vx, vy, w){
+    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.damage = w.damage;
+    this.pierce = w.pierce;
+    this.homing = w.homing;
+    this.radius = w.radius;
+    this.life = w.life;
+    this.hit = new Set();
+  }
+  update(dt){
+    if (this.homing){
+      let best = null, bd = 1e9;
+      for (const e of State.enemies){
+        const d = Util.dist(this.x, this.y, e.x, e.y);
+        if (d < bd){ bd = d; best = e; }
+      }
+      if (State.boss && !State.boss.dead){
+        const d = Util.dist(this.x, this.y, State.boss.x, State.boss.y);
+        if (d < bd){ bd = d; best = State.boss; }
+      }
+      if (best){
+        const sp = Math.hypot(this.vx, this.vy);
+        const cur = Math.atan2(this.vy, this.vx);
+        const want = Util.angleTo(this.x, this.y, best.x, best.y);
+        const na = cur + Util.clamp(Util.angleDiff(cur, want), -6 * dt, 6 * dt);
+        this.vx = Math.cos(na) * sp; this.vy = Math.sin(na) * sp;
+      }
+    }
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.life -= dt;
+  }
+}
+
+
+class Enemy {
+  constructor(type, theta, d){
+    this.type = type;
+    this.radius = type === 'crawler' ? CONFIG.enemy.crawlerRadius : CONFIG.enemy.flyerRadius;
+    this.theta = theta;
+    this.d = d;
+    this.hp = CONFIG.enemy.baseHp * Galaxy.diff.enemyHp;
+    this.maxHp = this.hp;
+    this.vx = 0; this.vy = 0;
+    this.dtheta = 0;
+    this.flash = 0;
+    this.dead = false;
+    this.syncXY();
+  }
+  syncXY(){ const p = Util.polar(this.theta, this.d); this.x = p.x; this.y = p.y; }
+
+  update(dt){
+    this.flash = Math.max(0, this.flash - dt);
+    const p = State.player;
+    const speedMul = Galaxy.diff.enemySpeed;
+
+    if (this.type === 'crawler'){
+      // 沿地表角向追踪
+      const diff = Util.angleDiff(this.theta, p.theta);
+      const dir = Math.sign(diff);
+      const target = dir * CONFIG.enemy.crawlerAngSpeed * speedMul;
+      this.dtheta += (target - this.dtheta) * Math.min(1, dt * 6);
+      this.theta = Util.wrapAngle(this.theta + this.dtheta * dt);
+      this.d = Util.lerp(this.d, Galaxy.surfaceR(this.theta) + this.radius, Math.min(1, dt * 8));
+      this.syncXY();
+    } else {
+      // 飞行者：2D 追踪
+      const dx = p.x - this.x, dy = p.y - this.y;
+      const dd = Math.hypot(dx, dy) || 1;
+      const accel = CONFIG.enemy.flyerAccel * speedMul;
+      this.vx += (dx / dd) * accel * dt;
+      this.vy += (dy / dd) * accel * dt;
+      const maxSp = CONFIG.enemy.baseSpeed * speedMul;
+      const sp = Math.hypot(this.vx, this.vy);
+      if (sp > maxSp){ this.vx *= maxSp / sp; this.vy *= maxSp / sp; }
+      this.x += this.vx * dt; this.y += this.vy * dt;
+
+      const a = Math.atan2(this.y - CONFIG.CY, this.x - CONFIG.CX);
+      const rr = Util.dist(CONFIG.CX, CONFIG.CY, this.x, this.y);
+      const minR = Galaxy.planetR + 6, maxR = Galaxy.planetR + 92;
+      if (rr < minR || rr > maxR){
+        const nr = Util.clamp(rr, minR, maxR);
+        this.x = CONFIG.CX + Math.cos(a) * nr;
+        this.y = CONFIG.CY + Math.sin(a) * nr;
+      }
+    }
+  }
+
+  takeDamage(d){ this.hp -= d; this.flash = 0.08; if (this.hp <= 0) this.dead = true; }
+}
+
+
+class Boss {
+  constructor(){
+    this.radius = CONFIG.boss.radius;
+    this.hp = Galaxy.diff.bossHp;
+    this.maxHp = this.hp;
+    const p = Galaxy.starPos();
+    this.x = p.x; this.y = p.y;
+    this.t = 0;
+    this.shootT = 1.2;
+    this.spawnT = 2.5;
+    this.flash = 0;
+    this.active = false;
+    this.dead = false;
+  }
+  activate(){ this.active = true; }
+  update(dt){
+    this.flash = Math.max(0, this.flash - dt);
+    this.t += dt;
+    const p = Galaxy.starPos();
+    this.x = p.x + Math.cos(this.t * 0.5) * 6;
+    this.y = p.y + Math.sin(this.t * 0.5) * 6;
+    if (!this.active) return;
+    this.shootT -= dt;
+    this.spawnT -= dt;
+    if (this.shootT <= 0){ this.shootT = CONFIG.boss.shootInterval; this.shoot(); }
+    if (this.spawnT <= 0){ this.spawnT = CONFIG.boss.spawnInterval; this.spawnMinions(); }
+  }
+  shoot(){
+    const n = Galaxy.diff.bossBullets;
+    const base = Math.random() * Math.PI * 2;
+    for (let i = 0; i < n; i++){
+      const a = base + i / n * Math.PI * 2;
+      const sp = CONFIG.boss.bulletSpeed;
+      State.ebullets.push({ x: this.x, y: this.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: CONFIG.boss.bulletRadius, life: 4 });
+    }
+    AudioFX.sfx('bossHit');
+  }
+  spawnMinions(){
+    const n = Math.min(3, 1 + Galaxy.galaxyIndex);
+    for (let i = 0; i < n; i++){
+      const a = Math.random() * Math.PI * 2;
+      const d = Galaxy.planetR + Util.rand(10, 40);
+      State.enemies.push(new Enemy('flyer', a, d));
+    }
+  }
+  takeDamage(d){ this.hp -= d; this.flash = 0.08; AudioFX.sfx('bossHit'); if (this.hp <= 0) this.dead = true; }
+}
+
+
+class Resource {
+  constructor(theta, d){
+    this.theta = theta; this.d = d; this.baseD = d;
+    this.phase = Math.random() * Math.PI * 2;
+    this.r = CONFIG.resource.radius;
+    this.taken = false;
+    this.syncXY();
+  }
+  syncXY(){ const p = Util.polar(this.theta, this.d); this.x = p.x; this.y = p.y; }
+  update(dt){ this.d = this.baseD + Math.sin(State.time * 2 + this.phase) * 2; this.syncXY(); }
+}
+
+
+class EquipmentPickup {
+  constructor(kind, id, theta, d){
+    this.kind = kind;   // 'weapon' | 'passive'
+    this.id = id;
+    this.theta = theta; this.d = d; this.baseD = d;
+    this.phase = Math.random() * Math.PI * 2;
+    this.r = 5;
+    this.taken = false;
+    this.syncXY();
+  }
+  syncXY(){ const p = Util.polar(this.theta, this.d); this.x = p.x; this.y = p.y; }
+  update(dt){ this.d = this.baseD + Math.sin(State.time * 2 + this.phase) * 2; this.syncXY(); }
+}
+
+
+class Particle {
+  constructor(x, y, vx, vy, life, color, size){
+    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.life = life; this.maxLife = life;
+    this.color = color; this.size = size;
+  }
+  update(dt){
+    this.x += this.vx * dt; this.y += this.vy * dt;
+    this.vx *= 0.98; this.vy *= 0.98;
+    this.life -= dt;
+  }
+}
+
+
+class FloatText {
+  constructor(x, y, text, color){
+    this.x = x; this.y = y; this.text = text;
+    this.color = color || '#ffffff';
+    this.life = 1.0; this.vy = -20;
+  }
+  update(dt){ this.y += this.vy * dt; this.life -= dt; }
+}
+
+</script>
+<script>
+// 星系：行星/地形生成、刷怪、难度缩放
+const Galaxy = {
+  galaxyIndex: 0,
+  diff: null,
+  planetR: 74,
+  hue: 195,
+  seed: 0,
+  terrainParams: null,
+  starD: 0,
+
+  start(index){
+    this.galaxyIndex = index;
+    this.diff = CONFIG.galaxies[index];
+    this.planetR = this.diff.planetR;
+    this.hue = this.diff.hue;
+    this.seed = 1000 + index * 137;
+    const rng = Util.mulberry32(this.seed);
+    this.terrainParams = {
+      p1: rng() * Math.PI * 2, p2: rng() * Math.PI * 2, p3: rng() * Math.PI * 2,
+      f1: 2, f2: 3, f3: 5,
+      a1: 0.5, a2: 0.3, a3: 0.2,
+    };
+    this.starD = this.planetR + 26;
+  },
+
+  terrain(theta){
+    const tp = this.terrainParams;
+    const amp = this.diff.terrainAmp;
+    return amp * (
+      tp.a1 * Math.sin(tp.f1 * theta + tp.p1) +
+      tp.a2 * Math.sin(tp.f2 * theta + tp.p2) +
+      tp.a3 * Math.sin(tp.f3 * theta + tp.p3)
+    );
+  },
+
+  surfaceR(theta){ return this.planetR + this.terrain(theta); },
+  starPos(){ return Util.polar(0, this.starD); },
+
+  spawnResource(){
+    const theta = Math.random() * Math.PI * 2;
+    const d = this.surfaceR(theta) + Util.rand(CONFIG.resource.minD, CONFIG.resource.maxD);
+    return new Resource(theta, d);
+  },
+
+  spawnEquipment(){
+    const theta = Math.random() * Math.PI * 2;
+    const d = this.surfaceR(theta) + Util.rand(10, 26);
+    let kind, id;
+    if (Math.random() < 0.5){
+      kind = 'weapon'; id = Util.pick(Object.keys(CONFIG.weapons));
+    } else {
+      kind = 'passive'; id = Util.pick(Object.keys(CONFIG.passives));
+    }
+    return new EquipmentPickup(kind, id, theta, d);
+  },
+
+  spawnEnemy(){
+    for (let tries = 0; tries < 12; tries++){
+      const theta = Math.random() * Math.PI * 2;
+      const type = Math.random() < 0.5 ? 'crawler' : 'flyer';
+      const d = type === 'crawler'
+        ? this.surfaceR(theta) + CONFIG.enemy.crawlerRadius
+        : this.planetR + Util.rand(12, 60);
+      const e = new Enemy(type, theta, d);
+      if (!State.player || Util.dist(e.x, e.y, State.player.x, State.player.y) > 90) return e;
+    }
+    return new Enemy('flyer', Math.random() * Math.PI * 2, this.planetR + 40);
+  },
+};
+
+</script>
+<script>
+// 渲染管线：星空 / 行星 / 地形 / 实体 / 光晕 / 粒子 / 震屏
+const Render = {
+  ctx: null,
+
+  init(){ this.ctx = document.getElementById('game').getContext('2d'); },
+
+  glow(x, y, r, color, alpha){
+    const ctx = this.ctx;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, Util.hexToRgba(color, alpha));
+    g.addColorStop(1, Util.hexToRgba(color, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  },
+
+  draw(){
+    const ctx = this.ctx;
+    const hue = Galaxy.hue;
+
+    // 背景
+    const bg = ctx.createLinearGradient(0, 0, 0, CONFIG.HEIGHT);
+    bg.addColorStop(0, CONFIG.colors.bgTop);
+    bg.addColorStop(1, CONFIG.colors.bgBottom);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+
+    // 星云
+    let g = ctx.createRadialGradient(CONFIG.CX - 140, CONFIG.CY - 80, 0, CONFIG.CX - 140, CONFIG.CY - 80, 160);
+    g.addColorStop(0, `hsla(${hue},60%,45%,0.10)`); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    g = ctx.createRadialGradient(CONFIG.CX + 150, CONFIG.CY + 70, 0, CONFIG.CX + 150, CONFIG.CY + 70, 180);
+    g.addColorStop(0, `hsla(${(hue + 80) % 360},60%,45%,0.08)`); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+
+    // 星空
+    for (const s of State.stars){
+      const tw = 0.5 + 0.5 * Math.sin(State.time * 2 + s.p);
+      ctx.globalAlpha = 0.4 + 0.6 * tw;
+      ctx.fillStyle = '#dfe8ff';
+      ctx.fillRect(s.x, s.y, s.s, s.s);
+    }
+    ctx.globalAlpha = 1;
+
+    // 震屏
+    ctx.save();
+    if (State.shake > 0){
+      ctx.translate(Util.rand(-State.shake, State.shake), Util.rand(-State.shake, State.shake));
+    }
+
+    this.drawPlanet();
+    this.drawStar();
+
+    for (const eq of State.equipments) this.drawEquipment(eq);
+    for (const r of State.resources) this.drawResource(r);
+    for (const e of State.enemies) this.drawEnemy(e);
+    if (State.boss) this.drawBoss(State.boss);
+    if (State.player && !State.player.dead) this.drawPlayer(State.player);
+
+    for (const p of State.projectiles) this.drawProjectile(p, CONFIG.colors.projPlayer);
+    for (const b of State.ebullets) this.drawProjectile(b, CONFIG.colors.projEnemy);
+
+    for (const p of State.particles){
+      ctx.globalAlpha = Util.clamp(p.life / p.maxLife, 0, 1);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    for (const t of State.texts){
+      ctx.globalAlpha = Util.clamp(t.life, 0, 1);
+      ctx.fillStyle = t.color;
+      ctx.fillText(t.text, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+
+    ctx.restore();
+
+    // 受击闪白
+    if (State.flash > 0){
+      ctx.fillStyle = `rgba(255,255,255,${Util.clamp(State.flash, 0, 1) * 0.5})`;
+      ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+    }
+  },
+
+  drawPlanet(){
+    const ctx = this.ctx;
+    const R = Galaxy.planetR, hue = Galaxy.hue;
+
+    const g = ctx.createRadialGradient(CONFIG.CX - R * 0.35, CONFIG.CY - R * 0.35, R * 0.1, CONFIG.CX, CONFIG.CY, R);
+    g.addColorStop(0, `hsl(${hue},65%,60%)`);
+    g.addColorStop(1, `hsl(${hue},60%,34%)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(CONFIG.CX, CONFIG.CY, R, 0, Math.PI * 2); ctx.fill();
+
+    // 地形边缘（起伏地表）
+    ctx.beginPath();
+    const steps = 120;
+    for (let i = 0; i <= steps; i++){
+      const th = i / steps * Math.PI * 2;
+      const p = Util.polar(th, Galaxy.surfaceR(th));
+      if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = `hsl(${hue},50%,26%)`;
+    ctx.fill();
+
+    // 环形山
+    const rng = Util.mulberry32(Galaxy.seed + 7);
+    ctx.fillStyle = `hsla(${hue},50%,22%,0.5)`;
+    for (let i = 0; i < 6; i++){
+      const a = rng() * Math.PI * 2;
+      const rr = rng() * R * 0.6 + R * 0.1;
+      const px = CONFIG.CX + Math.cos(a) * rr;
+      const py = CONFIG.CY + Math.sin(a) * rr;
+      const cr = rng() * 5 + 2;
+      ctx.beginPath(); ctx.arc(px, py, cr, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // 大气辉光
+    this.glow(CONFIG.CX, CONFIG.CY, R + 8, '#ffffff', 0.12);
+  },
+
+  drawStar(){
+    const ctx = this.ctx;
+    const p = Galaxy.starPos();
+    this.glow(p.x, p.y, 26, CONFIG.colors.starGlow, 0.9);
+    this.glow(p.x, p.y, 12, CONFIG.colors.star, 1);
+    ctx.fillStyle = CONFIG.colors.star;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill();
+
+    // 光柱
+    const surf = Util.polar(0, Galaxy.surfaceR(0));
+    const g = ctx.createLinearGradient(p.x, p.y, surf.x, surf.y);
+    g.addColorStop(0, 'rgba(255,243,176,0.45)');
+    g.addColorStop(1, 'rgba(255,243,176,0)');
+    ctx.strokeStyle = g; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(surf.x, surf.y); ctx.stroke();
+  },
+
+  drawPlayer(p){
+    const ctx = this.ctx;
+    const blink = p.invuln > 0 && Math.floor(State.time * 20) % 2 === 0;
+
+    ctx.save();
+    if (blink) ctx.globalAlpha = 0.45;
+    this.glow(p.x, p.y, 16, CONFIG.colors.playerGlow, 0.8);
+    this.glow(p.x, p.y, 9, CONFIG.colors.player, 1);
+    ctx.fillStyle = CONFIG.colors.player;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // 携带的资源环绕
+    const n = p.carried;
+    for (let i = 0; i < n; i++){
+      const a = State.time * 3 + i / Math.max(1, n) * Math.PI * 2;
+      ctx.fillStyle = CONFIG.colors.resource;
+      ctx.fillRect(p.x + Math.cos(a) * 12 - 1.5, p.y + Math.sin(a) * 12 - 1.5, 3, 3);
+    }
+  },
+
+  drawEnemy(e){
+    const ctx = this.ctx;
+    this.glow(e.x, e.y, 12, CONFIG.colors.enemyGlow, 0.5);
+    ctx.fillStyle = e.flash > 0 ? '#ffffff' : CONFIG.colors.enemy;
+    ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = CONFIG.colors.enemyEdge; ctx.lineWidth = 1.5; ctx.stroke();
+
+    const a = Util.angleTo(e.x, e.y, State.player.x, State.player.y);
+    ctx.fillStyle = '#ff2e4d';
+    ctx.fillRect(e.x + Math.cos(a) * 3 - 1, e.y + Math.sin(a) * 3 - 1, 2, 2);
+
+    if (e.hp < e.maxHp){
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(e.x - 6, e.y - 9, 12, 2);
+      ctx.fillStyle = '#ff5470';
+      ctx.fillRect(e.x - 6, e.y - 9, 12 * Util.clamp(e.hp / e.maxHp, 0, 1), 2);
+    }
+  },
+
+  drawBoss(b){
+    const ctx = this.ctx;
+    this.glow(b.x, b.y, 42, CONFIG.colors.enemyGlow, 0.7);
+    ctx.fillStyle = b.flash > 0 ? '#ffffff' : '#05060a';
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#ff5470'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#ff2e4d';
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 0.5, 0, Math.PI * 2); ctx.fill();
+  },
+
+  drawEquipment(eq){
+    const ctx = this.ctx;
+    const col = eq.kind === 'weapon' ? '#ffd23f' : CONFIG.colors.equip;
+    this.glow(eq.x, eq.y, 10, col, 0.6);
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(eq.x, eq.y, eq.r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#05060a';
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const icon = eq.kind === 'weapon' ? CONFIG.weapons[eq.id].icon : CONFIG.passives[eq.id].icon;
+    ctx.fillText(icon, eq.x, eq.y);
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  },
+
+  drawResource(r){
+    const ctx = this.ctx;
+    this.glow(r.x, r.y, 8, CONFIG.colors.resourceGlow, 0.7);
+    ctx.fillStyle = CONFIG.colors.resource;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.fill();
+  },
+
+  drawProjectile(p, color){
+    const ctx = this.ctx;
+    const r = p.radius || p.r || 2.5;
+    this.glow(p.x, p.y, 7, color, 0.7);
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+  },
+};
+
+</script>
+<script>
+// 游戏状态机与主循环
+const State = {
+  mode: 'title',   // title | playing | paused | equip | galaxycomplete | gameover | victory | upgrade
+  player: null,
+  enemies: [], resources: [], equipments: [], projectiles: [], ebullets: [], particles: [], texts: [],
+  boss: null,
+  resourcesBanked: 0,
+  prevTheta: 0,
+  time: 0,
+  shake: 0,
+  flash: 0,
+  warpT: 0,
+  msg: '', msgT: 0,
+  stars: [],
+
+  addShake(m){ this.shake = Math.max(this.shake, m); },
+  toast(text, dur){ this.msg = text; this.msgT = dur || 1.6; },
+  spawnParticles(x, y, color, n, spread, life){
+    for (let i = 0; i < n; i++){
+      const a = Math.random() * Math.PI * 2;
+      const s = Util.rand(20, spread);
+      this.particles.push(new Particle(x, y, Math.cos(a) * s, Math.sin(a) * s, Util.rand(life * 0.5, life), color, Util.randInt(1, 3)));
+    }
+  },
+};
+
+// 跨星系持久进度（元进度）：金币 / 钻石 / 免费加点 / 装备栏 / 永久加点
+const Meta = {
+  gold: 0,          // 金币（闯关收集，死亡损失 50%）
+  diamond: 0,       // 钻石（永久，死亡不损失）
+  deaths: 0,        // 累计死亡次数
+  freePoints: 0,    // 免费加点次数（每死亡 N 次 +1）
+  equipSlots: CONFIG.economy.slotBase,   // 当前装备栏数量
+  levels: { maxHp: 0, maxMp: 0, shield: 0, equip: 0, shieldRegen: 0, hpRegen: 0, mpRegen: 0 },
+
+  cost(id){ const u = CONFIG.upgrades[id]; return u.base + u.growth * this.levels[id]; },
+  maxHp(){ return CONFIG.player.maxHp + this.levels.maxHp * CONFIG.upgrades.maxHp.add; },
+  maxMp(){ return CONFIG.player.maxMp + this.levels.maxMp * CONFIG.upgrades.maxMp.add; },
+  maxShield(){ return this.levels.shield * CONFIG.upgrades.shield.add; },
+  dmgMul(){ return 1 + this.levels.equip * CONFIG.upgrades.equip.add; },
+  shieldRegen(){ return this.levels.shieldRegen * CONFIG.upgrades.shieldRegen.add; },
+  hpRegen(){ return this.levels.hpRegen * CONFIG.upgrades.hpRegen.add; },
+  mpRegen(){ return this.levels.mpRegen * CONFIG.upgrades.mpRegen.add; },
+  canBuySlot(){ return this.equipSlots < CONFIG.economy.slotMax; },
+};
+
+let last = 0;
+let enemyTimer = 0, resTimer = 0, eqTimer = 0;
+
+function boot(){
+  Render.init();
+  Input.init();
+  for (let i = 0; i < 90; i++){
+    State.stars.push({ x: Util.rand(0, CONFIG.WIDTH), y: Util.rand(0, CONFIG.HEIGHT), s: Util.randInt(1, 2), p: Math.random() * Math.PI * 2 });
+  }
+  setupUI();
+  Galaxy.start(0);   // 预初始化，使标题画面能渲染行星
+  showScreen('title');
+  requestAnimationFrame(loop);
+}
+
+function loop(ts){
+  requestAnimationFrame(loop);
+  if (!last) last = ts;
+  let dt = (ts - last) / 1000;
+  last = ts;
+  dt = Math.min(dt, 0.05);
+
+  Input.update();
+  update(dt);
+  Input.endFrame();
+
+  Render.draw();
+  updateHUD();
+}
+
+// —— 主更新 ——
+function update(dt){
+  State.time += dt;
+  State.shake = Math.max(0, State.shake - dt * 12);
+  State.flash = Math.max(0, State.flash - dt * 3);
+  State.msgT = Math.max(0, State.msgT - dt);
+
+  if (State.mode === 'title'){
+    if (Input.confirm) startRun();
+    return;
+  }
+  if (State.mode === 'gameover'){
+    if (Input.confirm) restartGalaxy();
+    return;
+  }
+  if (State.mode === 'victory'){
+    if (Input.confirm){ showScreen('title'); State.mode = 'title'; }
+    return;
+  }
+  if (State.mode === 'galaxycomplete'){
+    State.warpT -= dt;
+    if (State.warpT <= 0){
+      if (Galaxy.galaxyIndex + 1 >= CONFIG.galaxies.length){
+        State.mode = 'victory';
+        AudioFX.sfx('win');
+        document.getElementById('winInfo').textContent = `你穿越了 ${CONFIG.galaxies.length} 个星系，抵达宇宙的尽头。`;
+        showScreen('victory');
+      } else {
+        Galaxy.start(Galaxy.galaxyIndex + 1);
+        showUpgrade();
+      }
+    }
+    return;
+  }
+  if (State.mode === 'paused'){
+    if (Input.pause){ State.mode = 'playing'; showScreen(null); }
+    return;
+  }
+  if (State.mode === 'equip') return;   // 装备栏弹窗：暂停等待玩家选择
+  if (State.mode === 'upgrade'){
+    if (Input.confirm) enterGalaxy();
+    return;
+  }
+
+  // —— playing ——
+  if (Input.pause){ State.mode = 'paused'; showScreen('pause'); return; }
+
+  const p = State.player;
+  State.prevTheta = p.theta;
+
+  if (Input.toggleFly){
+    if (p.flying) p.flying = false;
+    else if (p.mp > 1){ p.flying = true; AudioFX.sfx('jump'); }
+  }
+
+  p.update(dt);
+  p.tryAttack();          // 自动攻击
+  if (p.dead){ gameOver(); return; }
+
+  spawnEnemies(dt);
+  spawnPickups(dt);
+
+  for (const e of State.enemies) e.update(dt);
+  for (const r of State.resources) r.update(dt);
+  for (const eq of State.equipments) eq.update(dt);
+
+  updateProjectiles(dt);
+  if (State.boss){
+    State.boss.update(dt);
+    updateBossBullets(dt);
+    if (State.boss.dead){ galaxyComplete(); return; }
+  }
+
+  collectResources();
+  depositAtStar();
+  collectEquipment();
+  enemyContact();
+
+  for (const part of State.particles) part.update(dt);
+  for (const t of State.texts) t.update(dt);
+
+  State.enemies = State.enemies.filter(e => !e.dead);
+  State.projectiles = State.projectiles.filter(pr => pr.life > 0);
+  State.ebullets = State.ebullets.filter(b => b.life > 0);
+  State.particles = State.particles.filter(part => part.life > 0);
+  State.texts = State.texts.filter(t => t.life > 0);
+}
+
+// —— 流程 ——
+function startRun(){
+  Galaxy.start(0);
+  AudioFX.init();
+  showUpgrade();
+}
+
+function restartGalaxy(){
+  Galaxy.start(Galaxy.galaxyIndex);
+  setupGalaxy();
+  State.mode = 'playing';
+  showScreen(null);
+}
+
+function showUpgrade(){
+  State.mode = 'upgrade';
+  renderUpgradeScreen();
+  showScreen('upgrade');
+}
+
+function enterGalaxy(){
+  setupGalaxy();
+  State.mode = 'playing';
+  showScreen(null);
+}
+
+function buyUpgrade(id){
+  if (Meta.freePoints > 0){
+    Meta.freePoints--;
+    Meta.levels[id]++;
+    AudioFX.sfx('pickup');
+    renderUpgradeScreen();
+  } else {
+    const cost = Meta.cost(id);
+    if (Meta.diamond >= cost){
+      Meta.diamond -= cost;
+      Meta.levels[id]++;
+      AudioFX.sfx('pickup');
+      renderUpgradeScreen();
+    }
+  }
+}
+
+function buySlot(){
+  if (Meta.canBuySlot() && Meta.diamond >= CONFIG.economy.slotCost){
+    Meta.diamond -= CONFIG.economy.slotCost;
+    Meta.equipSlots++;
+    AudioFX.sfx('pickup');
+    renderUpgradeScreen();
+  }
+}
+
+function upgEffectText(id, level){
+  const u = CONFIG.upgrades[id];
+  if (id === 'equip') return `伤害 +${Math.round(level * u.add * 100)}%`;
+  if (id === 'shieldRegen' || id === 'hpRegen' || id === 'mpRegen') return `+${(level * u.add).toFixed(1)}/s`;
+  return `+${level * u.add}`;
+}
+
+function renderUpgradeScreen(){
+  document.getElementById('upgResource').textContent =
+    `钻石 ${Meta.diamond} · 金币 ${Meta.gold} · 免费加点 ${Meta.freePoints}`;
+  document.getElementById('upgTitle').textContent = `准备进入第 ${Galaxy.galaxyIndex + 1} 星系 · ${Galaxy.diff.name}`;
+  for (const id of Object.keys(CONFIG.upgrades)){
+    const lvl = Meta.levels[id];
+    const cost = Meta.cost(id);
+    const info = document.getElementById('upgInfo-' + id);
+    info.textContent = `Lv.${lvl} · ${upgEffectText(id, lvl)}`;
+    const btn = document.getElementById('upgBtn-' + id);
+    if (Meta.freePoints > 0){
+      btn.textContent = '免费加点';
+      btn.disabled = false;
+      btn.classList.remove('disabled');
+    } else {
+      btn.textContent = `升级 ${cost}💎`;
+      const afford = Meta.diamond >= cost;
+      btn.disabled = !afford;
+      btn.classList.toggle('disabled', !afford);
+    }
+  }
+  renderSlotPurchase();
+}
+
+function renderSlotPurchase(){
+  const row = document.getElementById('slotRow');
+  row.innerHTML = '';
+  const info = document.createElement('span');
+  info.className = 'upg-info';
+  info.textContent = `装备栏 ${Meta.equipSlots}/${CONFIG.economy.slotMax}（基础 ${CONFIG.economy.slotBase}）`;
+  row.appendChild(info);
+  if (Meta.canBuySlot()){
+    const btn = document.createElement('button');
+    btn.className = 'upg-btn';
+    btn.textContent = `扩充 +1 (${CONFIG.economy.slotCost}💎)`;
+    const afford = Meta.diamond >= CONFIG.economy.slotCost;
+    btn.disabled = !afford;
+    btn.classList.toggle('disabled', !afford);
+    btn.addEventListener('click', () => { buySlot(); btn.blur(); });
+    row.appendChild(btn);
+  }
+}
+
+function setupGalaxy(){
+  State.player = new Player();
+  State.enemies = [];
+  State.resources = [];
+  State.equipments = [];
+  State.projectiles = [];
+  State.ebullets = [];
+  State.particles = [];
+  State.texts = [];
+  State.boss = null;
+  State.resourcesBanked = 0;
+  State.prevTheta = 0;
+  enemyTimer = resTimer = eqTimer = 0;
+
+  for (let i = 0; i < CONFIG.resource.count; i++) State.resources.push(Galaxy.spawnResource());
+  State.equipments.push(Galaxy.spawnEquipment());
+  for (let i = 0; i < 2; i++) State.enemies.push(Galaxy.spawnEnemy());
+
+  const d = Galaxy.diff;
+  State.toast(`${d.name} · 收集 ${d.goal} 金币唤醒恒星守护者`, 2.6);
+}
+
+function gameOver(){
+  State.mode = 'gameover';
+  AudioFX.sfx('lose');
+  // 累计死亡，每 N 次获得 1 次免费加点
+  Meta.deaths++;
+  let freeMsg = '';
+  if (Meta.deaths % CONFIG.economy.deathsPerPoint === 0){
+    Meta.freePoints++;
+    freeMsg = `\n累计死亡 ${Meta.deaths} 次，获得 1 次免费加点！`;
+  }
+  // 死亡损失 50% 金币（钻石不损失）
+  const lost = Math.floor(Meta.gold * CONFIG.economy.deathLoss);
+  Meta.gold -= lost;
+  document.getElementById('goInfo').textContent =
+    `你在「${Galaxy.diff.name}」陨落，损失 ${lost} 金币。${freeMsg}`;
+  refreshCurrency();
+  showScreen('gameover');
+}
+
+function galaxyComplete(){
+  State.mode = 'galaxycomplete';
+  State.warpT = 2.6;
+  AudioFX.sfx('warp');
+  State.spawnParticles(State.boss.x, State.boss.y, '#ff5470', 30, 140, 1.0);
+  State.boss = null;
+  State.enemies = [];
+  State.projectiles = [];
+  State.ebullets = [];
+  const next = Galaxy.galaxyIndex + 1;
+  document.getElementById('gcInfo').textContent = next >= CONFIG.galaxies.length
+    ? '所有星系已通关！'
+    : `已征服「${Galaxy.diff.name}」，即将前往「${CONFIG.galaxies[next].name}」`;
+  showScreen('galaxycomplete');
+}
+
+// —— 生成 ——
+function spawnEnemies(dt){
+  enemyTimer -= dt;
+  if (State.enemies.length < Galaxy.diff.enemyMax && enemyTimer <= 0){
+    State.enemies.push(Galaxy.spawnEnemy());
+    enemyTimer = CONFIG.enemy.spawnInterval;
+  }
+}
+
+function spawnPickups(dt){
+  resTimer -= dt; eqTimer -= dt;
+  if (State.resources.length < 14 && resTimer <= 0){
+    State.resources.push(Galaxy.spawnResource());
+    resTimer = 0.5;
+  }
+  if (State.equipments.length < 2 && eqTimer <= 0){
+    State.equipments.push(Galaxy.spawnEquipment());
+    eqTimer = 6;
+  }
+}
+
+// —— 战斗 ——
+function updateProjectiles(dt){
+  for (const proj of State.projectiles){
+    proj.update(dt);
+    for (const e of State.enemies){
+      if (e.dead || proj.hit.has(e)) continue;
+      if (Util.dist(proj.x, proj.y, e.x, e.y) < proj.radius + e.radius){
+        e.takeDamage(proj.damage);
+        proj.hit.add(e);
+        if (e.dead) enemyDie(e);
+        if (!proj.pierce){ proj.life = 0; break; }
+      }
+    }
+    if (proj.life <= 0) continue;
+    if (State.boss && !State.boss.dead){
+      if (Util.dist(proj.x, proj.y, State.boss.x, State.boss.y) < proj.radius + State.boss.radius){
+        State.boss.takeDamage(proj.damage);
+        if (!proj.pierce) proj.life = 0;
+      }
+    }
+  }
+  State.projectiles = State.projectiles.filter(pr => pr.life > 0);
+}
+
+function updateBossBullets(dt){
+  const p = State.player;
+  for (const b of State.ebullets){
+    b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+    if (p.invuln <= 0 && !p.dead && Util.dist(p.x, p.y, b.x, b.y) < p.radius + b.r){
+      p.damage(CONFIG.boss.bulletDamage, b.x, b.y);
+      b.life = 0;
+    }
+  }
+  State.ebullets = State.ebullets.filter(b => b.life > 0);
+}
+
+function enemyDie(e){
+  State.spawnParticles(e.x, e.y, '#ff5470', 10, 80, 0.5);
+  AudioFX.sfx('enemyDie');
+  if (Math.random() < Galaxy.diff.enemyDrop){
+    if (Math.random() < 0.5){
+      State.player.hp = Math.min(State.player.maxHp, State.player.hp + 15);
+      State.texts.push(new FloatText(e.x, e.y, '+HP', '#4aff7a'));
+    } else {
+      State.player.mp = Math.min(State.player.maxMp, State.player.mp + 20);
+      State.texts.push(new FloatText(e.x, e.y, '+MP', '#4a9dff'));
+    }
+    AudioFX.sfx('collect');
+  }
+}
+
+function enemyContact(){
+  const p = State.player;
+  if (p.invuln > 0 || p.dead) return;
+  for (const e of State.enemies){
+    if (Util.dist(p.x, p.y, e.x, e.y) < p.radius + e.radius){
+      p.damage(CONFIG.enemy.contactDamage, e.x, e.y);
+      break;
+    }
+  }
+  if (State.boss && !State.boss.dead && p.invuln <= 0 && !p.dead){
+    if (Util.dist(p.x, p.y, State.boss.x, State.boss.y) < p.radius + State.boss.radius){
+      p.damage(CONFIG.boss.bulletDamage, State.boss.x, State.boss.y);
+    }
+  }
+}
+
+// —— 收集 / 上缴 ——
+function bankResources(n){
+  State.resourcesBanked += n;
+  Meta.gold += n;   // 金币累计
+  if (State.resourcesBanked >= Galaxy.diff.goal && !State.boss) triggerBoss();
+}
+
+function collectResources(){
+  const p = State.player;
+  const pr = p.pickupRadius();
+  for (const r of State.resources){
+    if (r.taken) continue;
+    if (Util.dist(p.x, p.y, r.x, r.y) < pr + r.r){
+      r.taken = true;
+      State.spawnParticles(r.x, r.y, CONFIG.colors.resource, 6, 60, 0.4);
+      if (p.carried < CONFIG.player.carryCap){
+        p.carried++;
+        AudioFX.sfx('collect');
+      } else {
+        bankResources(1);
+        State.texts.push(new FloatText(r.x, r.y, '+1', CONFIG.colors.resource));
+      }
+    }
+  }
+  State.resources = State.resources.filter(r => !r.taken);
+}
+
+function depositAtStar(){
+  const p = State.player;
+  const crossed = State.prevTheta - p.theta > Math.PI;   // 顺时针越过 θ=0
+  if (crossed && p.carried > 0){
+    const n = p.carried;
+    bankResources(n);
+    p.carried = 0;
+    State.toast(`+${n} 金币已送达恒星`);
+    AudioFX.sfx('deposit');
+    const sp = Galaxy.starPos();
+    State.spawnParticles(sp.x, sp.y, CONFIG.colors.resource, 14, 80, 0.7);
+  }
+}
+
+function triggerBoss(){
+  State.boss = new Boss();
+  State.boss.activate();
+  State.toast('金币已足够！恒星守护者出现！', 2.4);
+  AudioFX.sfx('warp');
+}
+
+// —— 装备拾取（支持升级与栏位已满弹窗）——
+function collectEquipment(){
+  const p = State.player;
+  for (const eq of State.equipments){
+    if (eq.taken) continue;
+    if (Util.dist(p.x, p.y, eq.x, eq.y) < p.pickupRadius() + eq.r){
+      eq.taken = true;
+      AudioFX.sfx('pickup');
+      State.spawnParticles(eq.x, eq.y, CONFIG.colors.equip, 10, 70, 0.5);
+      handleEquipment(eq);
+      if (State.mode === 'equip') break;   // 弹出弹窗后停止本帧后续拾取
+    }
+  }
+  State.equipments = State.equipments.filter(e => !e.taken);
+}
+
+function handleEquipment(eq){
+  const p = State.player;
+  if (eq.kind === 'weapon'){
+    if (p.weapon === eq.id){
+      p.weaponLevel++;
+      State.toast(`武器升级：${CONFIG.weapons[eq.id].name} Lv.${p.weaponLevel}`);
+    } else {
+      promptEquip(eq, [{
+        label: `替换武器 → ${CONFIG.weapons[eq.id].name}`,
+        apply: () => { p.weapon = eq.id; p.weaponLevel = 1; },
+      }]);
+    }
+  } else {
+    const owned = p.passives.find(f => f.id === eq.id);
+    if (owned){
+      owned.level++;
+      State.toast(`装备升级：${CONFIG.passives[eq.id].name} Lv.${owned.level}`);
+    } else if (p.passives.length < Meta.equipSlots){
+      p.passives.push({ id: eq.id, level: 1 });
+      State.toast(`获得装备：${CONFIG.passives[eq.id].name}`);
+    } else {
+      const opts = p.passives.map((f, i) => ({
+        label: `替换 ${CONFIG.passives[f.id].name} Lv.${f.level}`,
+        apply: () => { p.passives[i] = { id: eq.id, level: 1 }; },
+      }));
+      promptEquip(eq, opts);
+    }
+  }
+}
+
+function promptEquip(eq, replaceOptions){
+  State.mode = 'equip';
+  const cfg = eq.kind === 'weapon' ? CONFIG.weapons[eq.id] : CONFIG.passives[eq.id];
+  const kindName = eq.kind === 'weapon' ? '武器' : '装备';
+  document.getElementById('epPickup').innerHTML = `拾取到：${cfg.icon} <b>${cfg.name}</b>（${kindName}）`;
+  document.getElementById('epCurrent').innerHTML = loadoutSummaryHTML();
+  const actions = document.getElementById('epActions');
+  actions.innerHTML = '';
+  for (const opt of replaceOptions){
+    const b = document.createElement('button');
+    b.className = 'upg-btn';
+    b.textContent = opt.label;
+    b.addEventListener('click', () => { opt.apply(); closeEquipPrompt(); });
+    actions.appendChild(b);
+  }
+  const discard = document.createElement('button');
+  discard.className = 'upg-btn discard';
+  discard.textContent = '丢弃该装备';
+  discard.addEventListener('click', () => { closeEquipPrompt(); });
+  actions.appendChild(discard);
+  showScreen('equipPrompt');
+}
+
+function closeEquipPrompt(){
+  State.mode = 'playing';
+  showScreen(null);
+}
+
+function loadoutSummaryHTML(){
+  const p = State.player;
+  let s = '';
+  if (p){
+    const w = CONFIG.weapons[p.weapon];
+    s += `<div class="ep-row"><span class="ep-tag">武器</span> ${w.icon} ${w.name} Lv.${p.weaponLevel}</div>`;
+    p.passives.forEach((f, i) => {
+      const c = CONFIG.passives[f.id];
+      s += `<div class="ep-row"><span class="ep-tag">装备${i + 1}</span> ${c.icon} ${c.name} Lv.${f.level}</div>`;
+    });
+    for (let i = p.passives.length; i < Meta.equipSlots; i++){
+      s += `<div class="ep-row"><span class="ep-tag">装备${i + 1}</span> 空</div>`;
+    }
+  }
+  return s;
+}
+
+// —— 货币兑换 ——
+function convertGold(n){   // n = 期望兑换的钻石数，或 'all' 表示全部可兑换
+  const ratio = CONFIG.economy.convertRatio;
+  const max = Math.floor(Meta.gold / ratio);
+  const make = n === 'all' ? max : Math.min(n, max);
+  if (make <= 0) return;
+  Meta.gold -= make * ratio;
+  Meta.diamond += make;
+  AudioFX.sfx('deposit');
+  refreshCurrency();
+  if (State.mode === 'upgrade') renderUpgradeScreen();
+}
+
+function refreshCurrency(){
+  document.getElementById('coinText').textContent = `金币 ${Meta.gold}`;
+  document.getElementById('diamondText').textContent = `钻石 ${Meta.diamond}`;
+  const goW = document.getElementById('goWallets');
+  if (goW) goW.textContent = `金币 ${Meta.gold} · 钻石 ${Meta.diamond} · 免费加点 ${Meta.freePoints}`;
+}
+
+// —— UI ——
+function setupUI(){
+  document.getElementById('startBtn').addEventListener('click', () => { AudioFX.init(); startRun(); });
+  document.getElementById('retryBtn').addEventListener('click', restartGalaxy);
+  document.getElementById('againBtn').addEventListener('click', () => { showScreen('title'); State.mode = 'title'; });
+  document.getElementById('goUpgradeBtn').addEventListener('click', () => { showUpgrade(); });
+  document.getElementById('convOneBtn').addEventListener('click', (e) => { convertGold(1); e.currentTarget.blur(); });
+  document.getElementById('convAllBtn').addEventListener('click', (e) => { convertGold('all'); e.currentTarget.blur(); });
+  document.getElementById('upgConvOneBtn').addEventListener('click', (e) => { convertGold(1); e.currentTarget.blur(); });
+  document.getElementById('upgConvAllBtn').addEventListener('click', (e) => { convertGold('all'); e.currentTarget.blur(); });
+  buildUpgradeUI();
+}
+
+function buildUpgradeUI(){
+  const list = document.getElementById('upgList');
+  list.innerHTML = '';
+  for (const id of Object.keys(CONFIG.upgrades)){
+    const u = CONFIG.upgrades[id];
+    const row = document.createElement('div');
+    row.className = 'upg';
+    row.innerHTML =
+      `<span class="upg-name">${u.icon} ${u.name}</span>` +
+      `<span class="upg-info" id="upgInfo-${id}"></span>` +
+      `<button class="upg-btn" id="upgBtn-${id}"></button>`;
+    list.appendChild(row);
+    document.getElementById('upgBtn-' + id).addEventListener('click', (e) => { buyUpgrade(id); e.currentTarget.blur(); });
+  }
+  document.getElementById('departBtn').addEventListener('click', enterGalaxy);
+}
+
+function showScreen(name){
+  const overlay = document.getElementById('overlay');
+  const hud = document.getElementById('hud');
+  const screens = ['title', 'pause', 'gameover', 'galaxycomplete', 'victory', 'upgrade', 'equipPrompt'];
+  if (!name){
+    overlay.classList.add('hidden');
+    hud.classList.remove('hidden');
+  } else {
+    overlay.classList.remove('hidden');
+    if (name === 'title' || name === 'gameover' || name === 'victory' || name === 'upgrade') hud.classList.add('hidden');
+    else hud.classList.remove('hidden');
+    screens.forEach(s => document.getElementById(s).classList.toggle('hidden', s !== name));
+  }
+}
+
+function showBossBar(show){ document.getElementById('bossbar').classList.toggle('hidden', !show); }
+
+function updateHUD(){
+  const p = State.player;
+  if (p){
+    document.getElementById('hpfill').style.width = (p.hp / p.maxHp * 100) + '%';
+    document.getElementById('mpfill').style.width = (p.mp / p.maxMp * 100) + '%';
+    document.getElementById('hplbl').textContent = Math.ceil(p.hp);
+    document.getElementById('mplbl').textContent = Math.ceil(p.mp);
+    const sb = document.getElementById('shieldbar');
+    if (p.maxShield > 0){
+      sb.classList.remove('hidden');
+      document.getElementById('shieldfill').style.width = (p.shield / p.maxShield * 100) + '%';
+      document.getElementById('shieldlbl').textContent = Math.ceil(p.shield);
+    } else {
+      sb.classList.add('hidden');
+    }
+  }
+  document.getElementById('galaxyNum').textContent = Galaxy.galaxyIndex + 1;
+  document.getElementById('coinText').textContent = `金币 ${Meta.gold}`;
+  document.getElementById('diamondText').textContent = `钻石 ${Meta.diamond}`;
+
+  const goal = Galaxy.diff ? Galaxy.diff.goal : 0;
+  document.getElementById('resfill').style.width = (goal > 0 ? Math.min(100, State.resourcesBanked / goal * 100) : 0) + '%';
+  let resTxt = `资源 ${State.resourcesBanked}/${goal}`;
+  if (p && p.carried > 0) resTxt += ` · 携带 ${p.carried}`;
+  document.getElementById('resText').textContent = resTxt;
+
+  const ws = document.getElementById('weaponSlot');
+  if (p && p.weapon){
+    const w = CONFIG.weapons[p.weapon];
+    ws.textContent = w.icon + ' ' + w.name + ' Lv.' + p.weaponLevel;
+    ws.title = '武器：' + w.name + ' Lv.' + p.weaponLevel;
+    ws.classList.add('weapon');
+  } else {
+    ws.textContent = '';
+    ws.classList.remove('weapon');
+  }
+  renderPassiveSlots(p);
+
+  if (State.boss){
+    showBossBar(true);
+    document.getElementById('bossfill').style.width = (State.boss.hp / State.boss.maxHp * 100) + '%';
+  } else {
+    showBossBar(false);
+  }
+
+  const toast = document.getElementById('toast');
+  if (State.msgT > 0){ toast.textContent = State.msg; toast.style.opacity = 1; }
+  else { toast.style.opacity = 0; }
+}
+
+function renderPassiveSlots(p){
+  const box = document.getElementById('passiveSlots');
+  box.innerHTML = '';
+  for (let i = 0; i < Meta.equipSlots; i++){
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    const f = p ? p.passives[i] : null;
+    if (f){
+      const cfg = CONFIG.passives[f.id];
+      slot.textContent = cfg.icon + ' ' + cfg.name + ' Lv.' + f.level;
+      slot.title = '装备：' + cfg.name + ' Lv.' + f.level;
+    } else {
+      slot.textContent = '空';
+      slot.title = '装备栏（空）';
+      slot.classList.add('empty');
+    }
+    box.appendChild(slot);
+  }
+}
+
+boot();
+
+</script>
+</body>
+</html>
