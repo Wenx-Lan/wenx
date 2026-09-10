@@ -65,6 +65,8 @@ html, body {
   font-size:11px; line-height:24px; text-align:center; white-space:nowrap;
 }
 .slot.weapon { border-color:#ffd23f; color:#ffe9a8; }
+.slot.skill { border-color:#7bffd6; color:#c9fff0; }
+.slot.skill.cd { border-color:rgba(255,255,255,0.30); color:#5a6478; }
 .slot.empty { color:#5a6478; border-color:rgba(255,255,255,0.16); }
 
 #bossbar { position:absolute; top:66px; left:50%; transform:translateX(-50%); width:250px; }
@@ -163,6 +165,22 @@ button:hover { background:#ffe066; }
 /* 标题按钮并排 */
 .title-btns { display:flex; gap:10px; justify-content:center; }
 
+/* 角色 / 皮肤选择 */
+#skinRow { display:flex; flex-direction:column; align-items:center; gap:8px; margin:10px 0 2px; }
+.skin-lbl { color:#9fb0d0; font-size:13px; letter-spacing:1px; }
+#skinOptions { display:flex; gap:18px; justify-content:center; }
+.skin-btn {
+  margin:0; padding:0; width:48px; height:48px; border-radius:50%;
+  border:2px solid rgba(255,255,255,0.22); background:transparent;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition:box-shadow .12s, border-color .12s;
+}
+.skin-btn:hover { border-color:rgba(255,255,255,0.5); }
+.skin-orb { width:20px; height:20px; border-radius:50%; }
+.skin-btn.selected { border-color:#ffd23f; box-shadow:0 0 18px rgba(255,210,63,0.55); }
+.skin-name { font-size:12px; color:#c7d0e0; letter-spacing:1px; margin:0; }
+.skill-desc { font-size:11px; color:#9fb0d0; line-height:1.5; margin:0 0 2px; }
+
 /* 图鉴 */
 #codexBody { text-align:left; margin:8px 0; }
 .cx-count { text-align:center; color:#ffd23f; font-size:13px; letter-spacing:1px; margin-bottom:8px; }
@@ -197,6 +215,7 @@ button:hover { background:#ffe066; }
         <span id="resText">收集 0/20</span>
       </div>
       <div id="loadout">
+        <div id="skillSlot" class="slot skill"></div>
         <div id="weaponSlots"></div>
         <div id="passiveSlots"></div>
       </div>
@@ -216,7 +235,7 @@ button:hover { background:#ffe066; }
       <div class="help">
         <p>←→ / A D —— 绕行星移动</p>
         <p>↑ / W / 空格 —— 跳跃 · 上升　↓ / S —— 下降</p>
-        <p>Shift / F —— 切换飞行　攻击为自动射击（靠近敌人即开火）</p>
+        <p>Shift / F —— 切换飞行　T —— 打开图鉴　攻击为自动射击（靠近敌人即开火）</p>
         <p>收集资源送回恒星 · 拾取装备对抗黑球 · 击败守护者前往下一星系</p>
         <p>死亡/通关资源自动兑换金币(2:1) · 金币 20:1 兑换钻石 · 金币加点生命/魔法/护盾 · 钻石加点高阶辅助与攻击装备栏 · 每死亡 3 次获 1 次免费加点</p>
       </div>
@@ -226,6 +245,12 @@ button:hover { background:#ffe066; }
         <button id="diffHardBtn" class="diff-btn">困难</button>
       </div>
       <p id="diffDesc" class="diff-desc">普通：标准难度。</p>
+      <div id="skinRow">
+        <span class="skin-lbl">选择光球皮肤</span>
+        <div id="skinOptions"></div>
+        <p id="skinName" class="skin-name"></p>
+        <p id="skillDesc" class="skill-desc"></p>
+      </div>
       <div class="title-btns">
         <button id="startBtn">开始游戏 (Enter)</button>
         <button id="codexBtn">图鉴</button>
@@ -324,6 +349,10 @@ const CONFIG = {
     bulletSpeed: 95,
     bulletDamage: 8,
     bulletRadius: 3,
+    // 弹幕类型：爬行者环形弹幕 / 飞行者扇形弹幕
+    crawlerBurst: 6,      // 爬行者环形弹幕数量
+    flyerBurst: 3,        // 飞行者扇形弹幕数量
+    flyerSpread: 0.5,     // 飞行者扇形弹幕散布弧度
   },
 
   boss: {
@@ -340,6 +369,21 @@ const CONFIG = {
     laserHalfWidth: 7,    // 激光半宽（命中判定）
     laserLen: 300,        // 激光长度
     laserDamage: 34,
+    // 第五、第六星系守护者：紫色不规则弹幕 + 瞬移
+    purpleInterval: 1.8,   // 紫色弹幕间隔（秒）
+    purpleBullets: 11,     // 每次紫色弹幕数量
+    purpleSpeedMin: 70,    // 紫色弹幕速度下限
+    purpleSpeedMax: 150,   // 紫色弹幕速度上限
+    purpleRadius: 4,       // 紫色弹幕半径
+    purpleDamage: 12,      // 紫色弹幕伤害
+    teleportInterval: 10,  // 瞬移间隔（秒）
+    // 黄色空腔（防护罩）：Boss 战周期性出现的临时安全区，可隔绝敌怪与弹幕（含激光）
+    shieldFirstDelay: 3,   // 首次生成延迟（秒）
+    shieldDuration: 3,     // 防护罩持续（秒）
+    shieldCooldownMin: 8,  // 防护罩结束到下一轮的冷却下限（秒）
+    shieldCooldownMax: 10, // 冷却上限（秒）
+    shieldRadius: 13,      // 防护罩半径（略小于 Boss 半径 18）
+    shieldKillRatio: 0.3,  // 消失时玩家在内：击杀非 Boss 敌怪比例
   },
 
   weapons: {
@@ -363,6 +407,11 @@ const CONFIG = {
     crawler: { name:'爬行者', icon:'●', desc:'沿行星地表爬行的黑球，会绕圈追击光球。' },
     flyer:   { name:'飞行者', icon:'◌', desc:'在空中飞行的黑球，会直线扑向光球。' },
     boss:    { name:'恒星守护者', icon:'✦', desc:'守护主恒星的强大存在，会发射环形弹幕；困难模式下追加蓝色激光。' },
+  },
+
+  // 图鉴：特殊机制介绍
+  mechanicCodex: {
+    shield: { name:'黄色空腔', icon:'◍', desc:'Boss 战期间周期性出现的防护罩，可隔绝敌怪与弹幕（含激光）；若在其消失时身处罩内，将清空全屏弹幕并击杀 30% 非 Boss 敌怪。' },
   },
 
   resource: {
@@ -419,9 +468,25 @@ const CONFIG = {
     projEnemy: '#ff5470',
     laser: '#4a9dff',
     laserGlow: '#7bb8ff',
+    bossPurple: '#b16dff',
+    bossPurpleGlow: '#c79bff',
+    shield: '#ffd93f',
+    shieldGlow: '#ffee7a',
     star: '#fff3b0',
     starGlow: '#ffe066',
   },
+
+  skins: [
+    { id:'gold',   name:'灼金 · 恒星', player:'#fff6d8', glow:'#ffd54a',
+      skill:{ id:'scorch', name:'炽热', icon:'☀', cd:7,
+        desc:'锁定 6 个敌方单位并发射黄色激光：非 Boss 单位被秒杀，Boss 受到 10% 最大生命伤害。' } },
+    { id:'frost',  name:'霜蓝 · 冰晶', player:'#d8ecff', glow:'#5aa7ff',
+      skill:{ id:'snow', name:'雪天', icon:'❄', cd:8, freeze:2.5,
+        desc:'冻结所有敌怪，背景化为超大雪花；冰冻结束后雪花破裂，对所有非 Boss 单位造成 50% 伤害，Boss 不受影响。' } },
+    { id:'violet', name:'幻紫 · 星尘', player:'#efdcff', glow:'#b16dff',
+      skill:{ id:'charm', name:'魅惑', icon:'✦', cd:10,
+        desc:'魅惑 4 个非 Boss 单位化为友方（黑紫色）：其弹幕与接触不再伤害你，转而攻击敌方，也会被敌方攻击。' } },
+  ],
 };
 
 </script>
@@ -473,6 +538,12 @@ const Util = {
     return { x: CONFIG.CX + Math.sin(theta) * d, y: CONFIG.CY - Math.cos(theta) * d };
   },
 
+  // 屏幕坐标转极坐标（polar 的逆运算）
+  cartToPolar(x, y){
+    const dx = x - CONFIG.CX, dy = y - CONFIG.CY;
+    return { theta: this.wrapAngle(Math.atan2(dx, -dy)), d: Math.hypot(dx, dy) };
+  },
+
   // 可复现随机数生成器
   mulberry32(seed){
     let a = seed >>> 0;
@@ -502,7 +573,7 @@ const Input = {
   mouseDown: false,
 
   left: false, right: false, up: false, down: false,
-  attack: false, jump: false, toggleFly: false, pause: false, confirm: false,
+  attack: false, jump: false, toggleFly: false, pause: false, confirm: false, codex: false, skill: false,
 
   init(){
     window.addEventListener('keydown', (e) => {
@@ -538,6 +609,8 @@ const Input = {
     this.toggleFly = this.pressed.has('ShiftLeft') || this.pressed.has('ShiftRight') || this.pressed.has('KeyF');
     this.pause = this.pressed.has('Escape') || this.pressed.has('KeyP');
     this.confirm = this.pressed.has('Enter') || this.pressed.has('Space');
+    this.codex = this.pressed.has('KeyT');
+    this.skill = this.pressed.has('KeyR');
   },
 
   endFrame(){ this.pressed.clear(); },
@@ -592,6 +665,9 @@ const AudioFX = {
       case 'lose':     this.play(220, 0.50, 'sawtooth', 0.16, -160); break;
       case 'laserCharge': this.play(180, 0.45, 'sawtooth', 0.07, 300); break;
       case 'laser':       this.play(900, 0.45, 'square',   0.12, -650); break;
+      case 'shield':      this.play(520, 0.22, 'triangle', 0.10, 240); break;
+      case 'shieldBurst': this.play(780, 0.35, 'triangle', 0.16, 420); break;
+      case 'skill':       this.play(720, 0.28, 'triangle', 0.16, 260); break;
     }
   },
 };
@@ -625,6 +701,7 @@ class Player {
     this.facing = 1;
     this.invuln = 0;
     this.carried = 0;
+    this.skillCd = 0;                        // 角色技能冷却（剩余秒数）
     for (const w of this.weapons) w.cd = 0;
     this.dead = false;
     this.syncXY();
@@ -643,6 +720,7 @@ class Player {
 
   update(dt){
     const c = CONFIG.player;
+    this.skillCd = Math.max(0, this.skillCd - dt);
 
     // —— 角向移动 ——
     let dir = 0;
@@ -684,7 +762,7 @@ class Player {
         State.particles.push(new Particle(
           this.x + Math.cos(a) * this.radius * -1,
           this.y + Math.sin(a) * this.radius * -1,
-          Math.cos(a) * 30, Math.sin(a) * 30, 0.35, CONFIG.colors.playerGlow, 2
+          Math.cos(a) * 30, Math.sin(a) * 30, 0.35, CONFIG.skins[selectedSkin].glow, 2
         ));
       }
     } else {
@@ -734,6 +812,7 @@ class Player {
   nearestTarget(){
     let best = null, bd = 1e9;
     for (const e of State.enemies){
+      if (e.dead || e.charmed) continue;
       const d = Util.dist(this.x, this.y, e.x, e.y);
       if (d < bd){ bd = d; best = e; }
     }
@@ -786,6 +865,7 @@ class Projectile {
     if (this.homing){
       let best = null, bd = 1e9;
       for (const e of State.enemies){
+        if (e.dead || e.charmed) continue;
         const d = Util.dist(this.x, this.y, e.x, e.y);
         if (d < bd){ bd = d; best = e; }
       }
@@ -820,6 +900,8 @@ class Enemy {
     this.dtheta = 0;
     this.flash = 0;
     this.dead = false;
+    this.charmed = false;                                           // 是否被魅惑为友方
+    this.charmT = CONFIG.enemy.shootInterval * Util.rand(0.8, 1.4); // 魅惑单位射击计时
     this.shootT = CONFIG.enemy.shootInterval * Util.rand(0.6, 1.5); // 困难模式弹幕计时
     Meta.discoverEnemy(type);
     this.syncXY();
@@ -828,6 +910,7 @@ class Enemy {
 
   update(dt){
     this.flash = Math.max(0, this.flash - dt);
+    if (this.charmed){ this.updateCharmed(dt); return; }
     const p = State.player;
     const speedMul = Galaxy.diff.enemySpeed;
 
@@ -862,21 +945,116 @@ class Enemy {
       }
     }
 
-    // 困难模式：普通敌怪低频弹幕射击
+    // 困难模式：普通敌怪低频弹幕射击（非 Boss 阶段同样生效）
     if (hardMode){
       this.shootT -= dt;
       if (this.shootT <= 0){
         this.shootT = CONFIG.enemy.shootInterval * Util.rand(0.7, 1.3);
-        if (Util.dist(this.x, this.y, p.x, p.y) < CONFIG.enemy.shootRange){
-          const a = Util.angleTo(this.x, this.y, p.x, p.y);
-          const sp = CONFIG.enemy.bulletSpeed;
-          State.ebullets.push({ x: this.x, y: this.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: CONFIG.enemy.bulletRadius, life: 3.2, dmg: CONFIG.enemy.bulletDamage });
-        }
+        if (Util.dist(this.x, this.y, p.x, p.y) < CONFIG.enemy.shootRange) this.fire();
       }
     }
   }
 
+  // 弹幕类型：爬行者环形弹幕 / 飞行者扇形弹幕
+  fire(){
+    const c = CONFIG.enemy;
+    if (this.type === 'crawler'){
+      const base = Math.random() * Math.PI * 2;
+      for (let i = 0; i < c.crawlerBurst; i++){
+        const a = base + i / c.crawlerBurst * Math.PI * 2;
+        this.shootBullet(a, c.bulletSpeed * Util.rand(0.8, 1.2));
+      }
+    } else {
+      const a0 = Util.angleTo(this.x, this.y, State.player.x, State.player.y);
+      for (let i = 0; i < c.flyerBurst; i++){
+        const off = (i - (c.flyerBurst - 1) / 2) * c.flyerSpread;
+        const a = a0 + off + Util.rand(-0.08, 0.08);
+        this.shootBullet(a, c.bulletSpeed * Util.rand(0.9, 1.3));
+      }
+    }
+  }
+
+  shootBullet(a, sp){
+    State.ebullets.push({
+      x: this.x, y: this.y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      r: CONFIG.enemy.bulletRadius, life: 3.2, dmg: CONFIG.enemy.bulletDamage,
+    });
+  }
+
   takeDamage(d){ this.hp -= d; this.flash = 0.08; if (this.hp <= 0) this.dead = true; }
+
+  // —— 魅惑单位：友方作战 ——
+  hostileTarget(){
+    let best = null, bd = 1e9;
+    for (const e of State.enemies){
+      if (e === this || e.dead || e.charmed) continue;
+      const d = Util.dist(this.x, this.y, e.x, e.y);
+      if (d < bd){ bd = d; best = e; }
+    }
+    if (State.boss && !State.boss.dead){
+      const d = Util.dist(this.x, this.y, State.boss.x, State.boss.y);
+      if (d < bd){ bd = d; best = State.boss; }
+    }
+    return best;
+  }
+
+  updateCharmed(dt){
+    const target = this.hostileTarget();
+    if (target){
+      const dx = target.x - this.x, dy = target.y - this.y;
+      const dd = Math.hypot(dx, dy) || 1;
+      const accel = CONFIG.enemy.flyerAccel;
+      this.vx += (dx / dd) * accel * dt;
+      this.vy += (dy / dd) * accel * dt;
+      const maxSp = CONFIG.enemy.baseSpeed;
+      const sp = Math.hypot(this.vx, this.vy);
+      if (sp > maxSp){ this.vx *= maxSp / sp; this.vy *= maxSp / sp; }
+      this.x += this.vx * dt; this.y += this.vy * dt;
+      const a = Math.atan2(this.y - CONFIG.CY, this.x - CONFIG.CX);
+      const rr = Util.dist(CONFIG.CX, CONFIG.CY, this.x, this.y);
+      const minR = Galaxy.planetR + 6, maxR = Galaxy.planetR + 92;
+      if (rr < minR || rr > maxR){
+        const nr = Util.clamp(rr, minR, maxR);
+        this.x = CONFIG.CX + Math.cos(a) * nr;
+        this.y = CONFIG.CY + Math.sin(a) * nr;
+      }
+    }
+    this.charmT -= dt;
+    if (this.charmT <= 0 && target){
+      this.charmT = CONFIG.enemy.shootInterval * Util.rand(0.7, 1.3);
+      this.fireFriendly();
+    }
+  }
+
+  fireFriendly(){
+    const target = this.hostileTarget();
+    if (!target) return;
+    const a = Util.angleTo(this.x, this.y, target.x, target.y);
+    const sp = CONFIG.enemy.bulletSpeed;
+    State.ebullets.push({
+      x: this.x, y: this.y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      r: CONFIG.enemy.bulletRadius, life: 3.2, dmg: CONFIG.enemy.bulletDamage,
+      friendly: true, color: '#c07bff',
+    });
+  }
+}
+
+
+class BossShield {
+  constructor(x, y, radius){
+    this.x = x; this.y = y;
+    this.radius = radius;
+    this.life = CONFIG.boss.shieldDuration;
+    this.maxLife = this.life;
+    this.expired = false;
+  }
+  update(dt){
+    this.life -= dt;
+    if (this.life <= 0){ this.life = 0; this.expired = true; }
+  }
+  contains(px, py){ return Util.dist(px, py, this.x, this.y) < this.radius; }
 }
 
 
@@ -885,8 +1063,9 @@ class Boss {
     this.radius = CONFIG.boss.radius;
     this.hp = Galaxy.diff.bossHp;
     this.maxHp = this.hp;
-    const p = Galaxy.starPos();
-    this.x = p.x; this.y = p.y;
+    const sp = Galaxy.starPos();
+    this.anchorX = sp.x; this.anchorY = sp.y;   // 基础位置（第五/六星系可瞬移）
+    this.x = sp.x; this.y = sp.y;
     this.t = 0;
     this.shootT = 1.2;
     this.spawnT = 2.5;
@@ -895,21 +1074,93 @@ class Boss {
     this.dead = false;
     this.laser = { state:'idle', t:0, angle:0 };  // 困难模式蓝色激光
     this.laserT = CONFIG.boss.laserInterval;
+    // 第五、第六星系守护者：更换图案 + 紫色弹幕 + 瞬移
+    this.variant = Galaxy.galaxyIndex === 4 ? 'crystal' : Galaxy.galaxyIndex === 5 ? 'abyss' : 'classic';
+    this.name = this.variant === 'crystal' ? '紫晶守护者' : this.variant === 'abyss' ? '深渊吞噬者' : '恒星守护者';
+    this.purpleT = CONFIG.boss.purpleInterval;
+    this.teleportT = CONFIG.boss.teleportInterval;
+    this.shield = null;                              // 黄色空腔（防护罩）
+    this.shieldTimer = CONFIG.boss.shieldFirstDelay; // 首次生成前的计时
     Meta.discoverEnemy('boss');
   }
   activate(){ this.active = true; }
+
+  // —— 黄色空腔（防护罩）：周期性出现的临时安全区 ——
+  updateShield(dt){
+    if (this.shield){
+      this.shield.update(dt);
+      if (this.shield.expired){
+        this.shieldBurst();
+        this.shield = null;
+        this.shieldTimer = Util.rand(CONFIG.boss.shieldCooldownMin, CONFIG.boss.shieldCooldownMax);
+      }
+    } else {
+      this.shieldTimer -= dt;
+      if (this.shieldTimer <= 0) this.spawnShield();
+    }
+  }
+  spawnShield(){
+    const theta = Math.random() * Math.PI * 2;
+    const d = Galaxy.surfaceR(theta) + CONFIG.boss.shieldRadius;   // 贴地：底边落在行星表面，玩家无需跳跃即可进入
+    const pos = Util.polar(theta, d);
+    this.shield = new BossShield(pos.x, pos.y, CONFIG.boss.shieldRadius);
+    Meta.discoverMechanic('shield');
+    State.spawnParticles(pos.x, pos.y, CONFIG.colors.shield, 12, 70, 0.5);
+    AudioFX.sfx('shield');
+    State.toast('黄色空腔出现！进入其中躲避弹幕', 2.0);
+  }
+  shieldBurst(){
+    const sh = this.shield;
+    const p = State.player;
+    const inShield = p && !p.dead && sh.contains(p.x, p.y);
+    State.spawnParticles(sh.x, sh.y, CONFIG.colors.shield, 16, 110, 0.6);
+    if (!inShield){ AudioFX.sfx('shield'); return; }
+    // 玩家在罩内：清空全屏弹幕 + 击杀 30% 非 Boss 敌怪
+    State.ebullets = [];
+    if (this.laser.state !== 'idle'){ this.laser.state = 'idle'; this.laserT = CONFIG.boss.laserInterval; }
+    const count = State.enemies.length > 0
+      ? Math.max(1, Math.floor(State.enemies.length * CONFIG.boss.shieldKillRatio))
+      : 0;
+    const pool = State.enemies.filter(e => !e.charmed);
+    for (let i = pool.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    let killed = 0;
+    for (const e of pool){
+      if (killed >= count) break;
+      if (e.dead) continue;
+      e.dead = true;
+      killed++;
+      State.spawnParticles(e.x, e.y, CONFIG.colors.shield, 10, 80, 0.5);
+    }
+    AudioFX.sfx('shieldBurst');
+    State.toast(`空腔释放！清空弹幕${killed > 0 ? ` · 击杀 ${killed} 敌怪` : ''}`, 2.2);
+  }
   update(dt){
     this.flash = Math.max(0, this.flash - dt);
     this.t += dt;
-    const p = Galaxy.starPos();
-    this.x = p.x + Math.cos(this.t * 0.5) * 6;
-    this.y = p.y + Math.sin(this.t * 0.5) * 6;
+    this.x = this.anchorX + Math.cos(this.t * 0.5) * 6;
+    this.y = this.anchorY + Math.sin(this.t * 0.5) * 6;
     if (!this.active) return;
     this.shootT -= dt;
     this.spawnT -= dt;
     if (this.shootT <= 0){ this.shootT = CONFIG.boss.shootInterval; this.shoot(); }
     if (this.spawnT <= 0){ this.spawnT = CONFIG.boss.spawnInterval; this.spawnMinions(); }
     if (hardMode) this.updateLaser(dt);
+    this.updateShield(dt);
+    if (this.variant !== 'classic'){
+      this.purpleT -= dt;
+      if (this.purpleT <= 0){
+        this.purpleT = CONFIG.boss.purpleInterval * Util.rand(0.7, 1.3);
+        this.firePurple();
+      }
+      this.teleportT -= dt;
+      if (this.teleportT <= 0){
+        this.teleportT = CONFIG.boss.teleportInterval;
+        this.teleport();
+      }
+    }
   }
 
   // 困难模式蓝色激光：蓄力瞄准 → 发射光束
@@ -951,11 +1202,40 @@ class Boss {
   checkLaserHit(){
     const p = State.player;
     if (!p || p.dead || p.invuln > 0) return;
+    if (playerInShield()) return;   // 黄色空腔隔绝激光
     const s = this.laserSegment();
     const d = Util.distPointToSegment(p.x, p.y, s.x1, s.y1, s.x2, s.y2);
     if (d < CONFIG.boss.laserHalfWidth + p.radius){
       p.damage(CONFIG.boss.laserDamage, this.x, this.y);
     }
+  }
+
+  // 紫色不规则弹幕：随机方向 + 随机速度
+  firePurple(){
+    const c = CONFIG.boss;
+    for (let i = 0; i < c.purpleBullets; i++){
+      const a = Math.random() * Math.PI * 2;
+      const sp = Util.rand(c.purpleSpeedMin, c.purpleSpeedMax);
+      State.ebullets.push({
+        x: this.x, y: this.y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        r: c.purpleRadius, life: Util.rand(3.5, 5.5), dmg: c.purpleDamage,
+        color: CONFIG.colors.bossPurple,
+      });
+    }
+    AudioFX.sfx('bossHit');
+  }
+
+  // 随机瞬移到星球上其他位置
+  teleport(){
+    State.spawnParticles(this.x, this.y, CONFIG.colors.bossPurple, 18, 110, 0.6);
+    const a = Math.random() * Math.PI * 2;
+    const d = Galaxy.surfaceR(a) + Util.rand(16, 42);
+    const p = Util.polar(a, d);
+    this.anchorX = p.x; this.anchorY = p.y;
+    this.x = p.x; this.y = p.y;
+    State.spawnParticles(this.x, this.y, CONFIG.colors.bossPurple, 18, 110, 0.6);
+    AudioFX.sfx('warp');
   }
   shoot(){
     const n = Galaxy.diff.bossBullets;
@@ -1147,6 +1427,8 @@ const Render = {
     }
     ctx.globalAlpha = 1;
 
+    if (State.snowT > 0) this.drawSnowflake();
+
     // 震屏
     ctx.save();
     if (State.shake > 0){
@@ -1159,11 +1441,17 @@ const Render = {
     for (const eq of State.equipments) this.drawEquipment(eq);
     for (const r of State.resources) this.drawResource(r);
     for (const e of State.enemies) this.drawEnemy(e);
-    if (State.boss){ this.drawBoss(State.boss); this.drawBossLaser(State.boss); }
+    if (State.boss){
+      this.drawBoss(State.boss);
+      this.drawBossLaser(State.boss);
+      if (State.boss.shield) this.drawBossShield(State.boss.shield);
+    }
     if (State.player && !State.player.dead) this.drawPlayer(State.player);
 
+    this.drawScorchLasers();
+
     for (const p of State.projectiles) this.drawProjectile(p, CONFIG.colors.projPlayer);
-    for (const b of State.ebullets) this.drawProjectile(b, CONFIG.colors.projEnemy);
+    for (const b of State.ebullets) this.drawProjectile(b, b.color || CONFIG.colors.projEnemy);
 
     for (const p of State.particles){
       ctx.globalAlpha = Util.clamp(p.life / p.maxLife, 0, 1);
@@ -1252,9 +1540,10 @@ const Render = {
 
     ctx.save();
     if (blink) ctx.globalAlpha = 0.45;
-    this.glow(p.x, p.y, 16, CONFIG.colors.playerGlow, 0.8);
-    this.glow(p.x, p.y, 9, CONFIG.colors.player, 1);
-    ctx.fillStyle = CONFIG.colors.player;
+    const skin = CONFIG.skins[selectedSkin];
+    this.glow(p.x, p.y, 16, skin.glow, 0.8);
+    this.glow(p.x, p.y, 9, skin.player, 1);
+    ctx.fillStyle = skin.player;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
@@ -1269,24 +1558,54 @@ const Render = {
 
   drawEnemy(e){
     const ctx = this.ctx;
-    this.glow(e.x, e.y, 12, CONFIG.colors.enemyGlow, 0.5);
-    ctx.fillStyle = e.flash > 0 ? '#ffffff' : CONFIG.colors.enemy;
-    ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = CONFIG.colors.enemyEdge; ctx.lineWidth = 1.5; ctx.stroke();
+    const charm = e.charmed;
+    const frozen = State.snowT > 0 && !charm;
 
-    const a = Util.angleTo(e.x, e.y, State.player.x, State.player.y);
-    ctx.fillStyle = '#ff2e4d';
+    if (charm){
+      // 魅惑单位：黑紫色友方
+      this.glow(e.x, e.y, 13, '#b16dff', 0.6);
+      ctx.fillStyle = e.flash > 0 ? '#ffffff' : '#241033';
+      ctx.strokeStyle = '#c07bff'; ctx.lineWidth = 1.5;
+    } else {
+      this.glow(e.x, e.y, 12, CONFIG.colors.enemyGlow, 0.5);
+      ctx.fillStyle = e.flash > 0 ? '#ffffff' : CONFIG.colors.enemy;
+      ctx.strokeStyle = CONFIG.colors.enemyEdge; ctx.lineWidth = 1.5;
+    }
+    ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.stroke();
+
+    // 冰冻视觉：冰蓝外环
+    if (frozen){
+      ctx.strokeStyle = '#aee0ff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.radius + 2.5, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // 眼睛/朝向标记
+    let a;
+    if (charm){
+      const t = e.hostileTarget();
+      a = t ? Util.angleTo(e.x, e.y, t.x, t.y) : 0;
+    } else {
+      a = Util.angleTo(e.x, e.y, State.player.x, State.player.y);
+    }
+    ctx.fillStyle = charm ? '#c07bff' : '#ff2e4d';
     ctx.fillRect(e.x + Math.cos(a) * 3 - 1, e.y + Math.sin(a) * 3 - 1, 2, 2);
 
     if (e.hp < e.maxHp){
       ctx.fillStyle = 'rgba(255,255,255,0.15)';
       ctx.fillRect(e.x - 6, e.y - 9, 12, 2);
-      ctx.fillStyle = '#ff5470';
+      ctx.fillStyle = charm ? '#c07bff' : '#ff5470';
       ctx.fillRect(e.x - 6, e.y - 9, 12 * Util.clamp(e.hp / e.maxHp, 0, 1), 2);
     }
   },
 
   drawBoss(b){
+    if (b.variant === 'crystal'){ this.drawBossCrystal(b); return; }
+    if (b.variant === 'abyss'){ this.drawBossAbyss(b); return; }
+    this.drawBossClassic(b);
+  },
+
+  drawBossClassic(b){
     const ctx = this.ctx;
     this.glow(b.x, b.y, 42, CONFIG.colors.enemyGlow, 0.7);
     ctx.fillStyle = b.flash > 0 ? '#ffffff' : '#05060a';
@@ -1294,6 +1613,50 @@ const Render = {
     ctx.strokeStyle = '#ff5470'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#ff2e4d';
     ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 0.5, 0, Math.PI * 2); ctx.fill();
+  },
+
+  drawBossCrystal(b){
+    const ctx = this.ctx;
+    const R = b.radius;
+    const rot = State.time * 0.8;
+    this.glow(b.x, b.y, R * 2.4, CONFIG.colors.bossPurpleGlow, 0.8);
+    // 旋转六边形晶体
+    ctx.fillStyle = b.flash > 0 ? '#ffffff' : '#2a1645';
+    ctx.strokeStyle = CONFIG.colors.bossPurple; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++){
+      const a = rot + i / 6 * Math.PI * 2;
+      const r = R * (i % 2 === 0 ? 1 : 0.75);
+      const x = b.x + Math.cos(a) * r, y = b.y + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = CONFIG.colors.bossPurple;
+    ctx.beginPath(); ctx.arc(b.x, b.y, R * 0.42, 0, Math.PI * 2); ctx.fill();
+  },
+
+  drawBossAbyss(b){
+    const ctx = this.ctx;
+    const R = b.radius;
+    const rot = State.time * 1.2;
+    this.glow(b.x, b.y, R * 2.4, CONFIG.colors.bossPurpleGlow, 0.85);
+    // 旋转五角尖刺星
+    ctx.fillStyle = b.flash > 0 ? '#ffffff' : '#1a0b22';
+    ctx.strokeStyle = '#d15bff'; ctx.lineWidth = 2;
+    const spikes = 5;
+    ctx.beginPath();
+    for (let i = 0; i < spikes * 2; i++){
+      const a = rot + i / (spikes * 2) * Math.PI * 2;
+      const r = i % 2 === 0 ? R * 1.15 : R * 0.55;
+      const x = b.x + Math.cos(a) * r, y = b.y + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 中心"眼"
+    ctx.fillStyle = '#d15bff';
+    ctx.beginPath(); ctx.arc(b.x, b.y, R * 0.38, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1a0b22';
+    ctx.beginPath(); ctx.arc(b.x, b.y, R * 0.18, 0, Math.PI * 2); ctx.fill();
   },
 
   drawBossLaser(b){
@@ -1310,6 +1673,25 @@ const Render = {
     ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(s.x1, s.y1); ctx.lineTo(s.x2, s.y2); ctx.stroke();
     ctx.lineCap = 'butt';
+  },
+
+  drawBossShield(sh){
+    const ctx = this.ctx;
+    const t = Util.clamp(sh.life / sh.maxLife, 0, 1);
+    const warn = t < 0.35 && Math.floor(State.time * 10) % 2 === 0;
+    const pulse = 0.5 + 0.5 * Math.sin(State.time * 5);
+    this.glow(sh.x, sh.y, sh.radius * 2.2, CONFIG.colors.shield, 0.6);
+    ctx.fillStyle = Util.hexToRgba(CONFIG.colors.shield, 0.14 + 0.08 * pulse);
+    ctx.beginPath(); ctx.arc(sh.x, sh.y, sh.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = warn ? '#ff8f6a' : CONFIG.colors.shield;
+    ctx.lineWidth = warn ? 2.5 : 2;
+    ctx.beginPath(); ctx.arc(sh.x, sh.y, sh.radius, 0, Math.PI * 2); ctx.stroke();
+    // 剩余时间弧
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(sh.x, sh.y, sh.radius + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * t);
+    ctx.stroke();
   },
 
   drawEquipment(eq){
@@ -1340,6 +1722,58 @@ const Render = {
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
   },
+
+  drawScorchLasers(){
+    const ctx = this.ctx;
+    const color = '#ffe066';
+    for (const l of State.scorchLasers){
+      const a = Util.clamp(l.life / l.maxLife, 0, 1);
+      this.glow(l.x1, l.y1, 10, color, 0.6 * a);
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+    ctx.globalAlpha = 1;
+  },
+
+  drawSnowflake(){
+    const ctx = this.ctx;
+    const t = Util.clamp(State.snowT / Math.max(0.001, State.snowDur), 0, 1);
+    const cx = CONFIG.CX, cy = CONFIG.CY;
+    const R = 118;
+    const rot = State.time * 0.35;
+    ctx.save();
+    ctx.globalAlpha = 0.15 + 0.22 * t;
+    ctx.strokeStyle = '#dcecff';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 6; i++){
+      const a = rot + i / 6 * Math.PI * 2;
+      const dx = Math.cos(a), dy = Math.sin(a);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + dx * R, cy + dy * R);
+      ctx.stroke();
+      for (let j = 0; j < 3; j++){
+        const fr = R * (0.4 + j * 0.2);
+        const bx = cx + dx * fr, by = cy + dy * fr;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + Math.cos(a + Math.PI / 3) * R * 0.16, by + Math.sin(a + Math.PI / 3) * R * 0.16);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + Math.cos(a - Math.PI / 3) * R * 0.16, by + Math.sin(a - Math.PI / 3) * R * 0.16);
+        ctx.stroke();
+      }
+    }
+    ctx.lineCap = 'butt';
+    this.glow(cx, cy, R * 0.5, '#cfe8ff', 0.3 * t);
+    ctx.restore();
+  },
 };
 
 </script>
@@ -1347,6 +1781,7 @@ const Render = {
 // 游戏状态机与主循环
 const State = {
   mode: 'title',   // title | playing | paused | equip | galaxycomplete | gameover | victory | upgrade
+  codexReturn: 'title',   // 图鉴关闭后返回的模式（title / playing / paused）
   player: null,
   enemies: [], resources: [], equipments: [], projectiles: [], ebullets: [], particles: [], texts: [],
   boss: null,
@@ -1358,6 +1793,9 @@ const State = {
   warpT: 0,
   msg: '', msgT: 0,
   stars: [],
+  snowT: 0,          // 雪天冰冻剩余时间
+  snowDur: 0,        // 当前雪天总时长（用于雪花渲染淡入淡出）
+  scorchLasers: [],  // 炽热技能的激光视觉
 
   addShake(m){ this.shake = Math.max(this.shake, m); },
   toast(text, dur){ this.msg = text; this.msgT = dur || 1.6; },
@@ -1379,10 +1817,11 @@ const Meta = {
   freePoints: 0,    // 免费加点次数（每死亡 N 次 +1）
   weaponSlots: CONFIG.economy.weaponSlotBase,   // 当前攻击类装备（武器）栏数量
   levels: { maxHp: 0, maxMp: 0, shield: 0, equip: 0, shieldRegen: 0, hpRegen: 0, mpRegen: 0 },
-  codex: {          // 图鉴：遇到的敌怪与装备
+  codex: {          // 图鉴：遇到的敌怪、装备与机制
     enemies: { crawler:false, flyer:false, boss:false },
     weapons: { pulse:false, scatter:false, rapid:false, pierce:false, homing:false },
     passives: { shield:false, speed:false, mpreg:false, hpregen:false, magnet:false },
+    mechanics: { shield:false },
   },
 
   cost(id){ const u = CONFIG.upgrades[id]; return u.base + u.growth * this.levels[id]; },
@@ -1397,9 +1836,11 @@ const Meta = {
   discoverEnemy(id){ this.codex.enemies[id] = true; },
   discoverWeapon(id){ this.codex.weapons[id] = true; },
   discoverPassive(id){ this.codex.passives[id] = true; },
+  discoverMechanic(id){ this.codex.mechanics[id] = true; },
 };
 
 let hardMode = false;   // 是否困难模式
+let selectedSkin = 0;   // 当前选择的光球皮肤索引
 let last = 0;
 let enemyTimer = 0, resTimer = 0, eqTimer = 0;
 
@@ -1436,6 +1877,12 @@ function update(dt){
   State.shake = Math.max(0, State.shake - dt * 12);
   State.flash = Math.max(0, State.flash - dt * 3);
   State.msgT = Math.max(0, State.msgT - dt);
+
+  // —— T 键切换图鉴（标题 / 游戏 / 暂停中均可）——
+  if (Input.codex){
+    if (State.mode === 'codex') closeCodex();
+    else if (State.mode === 'title' || State.mode === 'playing' || State.mode === 'paused') openCodex(State.mode);
+  }
 
   if (State.mode === 'title'){
     if (Input.confirm) startRun();
@@ -1491,19 +1938,51 @@ function update(dt){
 
   p.update(dt);
   p.tryAttack();          // 自动攻击
+  if (Input.skill) trySkill();   // 角色技能
   if (p.dead){ gameOver(); return; }
 
   spawnEnemies(dt);
   spawnPickups(dt);
 
-  for (const e of State.enemies) e.update(dt);
+  // 雪天冰冻期间：敌怪完全静止（Boss 不受影响，仍在下方单独更新）
+  if (State.snowT > 0){
+    State.snowT -= dt;
+    if (State.snowT <= 0) snowBreak();
+  } else {
+    for (const e of State.enemies) e.update(dt);
+  }
+  // 黄色空腔隔绝敌对单位：将罩内的敌怪推出防护罩
+  if (State.boss && State.boss.shield && !State.boss.shield.expired){
+    const sh = State.boss.shield;
+    for (const e of State.enemies){
+      if (e.dead || e.charmed) continue;
+      const d = Util.dist(e.x, e.y, sh.x, sh.y);
+      const min = sh.radius + e.radius;
+      if (d < min){
+        if (e.type === 'crawler'){
+          // 爬行者贴地移动：沿地表角度推开，使其离开防护罩
+          const a = Math.atan2(e.y - sh.y, e.x - sh.x);
+          const cp = Util.cartToPolar(sh.x + Math.cos(a) * min, sh.y + Math.sin(a) * min);
+          e.theta = cp.theta;
+          e.d = Galaxy.surfaceR(cp.theta) + e.radius;
+          e.syncXY();
+        } else if (d < 0.001){
+          e.x = sh.x + min; e.y = sh.y;
+        } else {
+          const push = min - d;
+          e.x += (e.x - sh.x) / d * push;
+          e.y += (e.y - sh.y) / d * push;
+        }
+      }
+    }
+  }
   for (const r of State.resources) r.update(dt);
   for (const eq of State.equipments) eq.update(dt);
 
   updateProjectiles(dt);
+  updateEnemyBullets(dt);
   if (State.boss){
     State.boss.update(dt);
-    updateBossBullets(dt);
     if (State.boss.dead){ galaxyComplete(); return; }
   }
 
@@ -1518,6 +1997,7 @@ function update(dt){
   State.enemies = State.enemies.filter(e => !e.dead);
   State.projectiles = State.projectiles.filter(pr => pr.life > 0);
   State.ebullets = State.ebullets.filter(b => b.life > 0);
+  State.scorchLasers = State.scorchLasers.filter(l => (l.life -= dt) > 0);
   State.particles = State.particles.filter(part => part.life > 0);
   State.texts = State.texts.filter(t => t.life > 0);
 }
@@ -1640,6 +2120,9 @@ function setupGalaxy(){
   State.boss = null;
   State.resourcesBanked = 0;
   State.prevTheta = 0;
+  State.snowT = 0;
+  State.snowDur = 0;
+  State.scorchLasers = [];
   enemyTimer = resTimer = eqTimer = 0;
 
   for (let i = 0; i < CONFIG.resource.count; i++) State.resources.push(Galaxy.spawnResource());
@@ -1714,7 +2197,7 @@ function updateProjectiles(dt){
   for (const proj of State.projectiles){
     proj.update(dt);
     for (const e of State.enemies){
-      if (e.dead || proj.hit.has(e)) continue;
+      if (e.dead || e.charmed || proj.hit.has(e)) continue;
       if (Util.dist(proj.x, proj.y, e.x, e.y) < proj.radius + e.radius){
         e.takeDamage(proj.damage);
         proj.hit.add(e);
@@ -1733,20 +2216,66 @@ function updateProjectiles(dt){
   State.projectiles = State.projectiles.filter(pr => pr.life > 0);
 }
 
-function updateBossBullets(dt){
+function playerInShield(){
+  if (!State.boss || !State.boss.shield || State.boss.shield.expired) return false;
   const p = State.player;
+  return !!(p && !p.dead && State.boss.shield.contains(p.x, p.y));
+}
+
+function updateEnemyBullets(dt){
+  const p = State.player;
+  const sh = (State.boss && State.boss.shield && !State.boss.shield.expired) ? State.boss.shield : null;
   for (const b of State.ebullets){
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-    if (p.invuln <= 0 && !p.dead && Util.dist(p.x, p.y, b.x, b.y) < p.radius + b.r){
-      p.damage(b.dmg !== undefined ? b.dmg : CONFIG.boss.bulletDamage, b.x, b.y);
+    // 黄色空腔只隔绝敌对弹幕（友方魅惑弹幕可穿过）
+    if (!b.friendly && sh && sh.contains(b.x, b.y)){
+      State.spawnParticles(b.x, b.y, CONFIG.colors.shield, 3, 40, 0.3);
       b.life = 0;
+      continue;
+    }
+    if (b.friendly){
+      // 友方（魅惑单位）弹幕：伤害敌对单位与 Boss
+      let hit = false;
+      for (const e of State.enemies){
+        if (e.dead || e.charmed) continue;
+        if (Util.dist(b.x, b.y, e.x, e.y) < b.r + e.radius){
+          e.takeDamage(b.dmg);
+          if (e.dead) enemyDie(e);
+          hit = true; break;
+        }
+      }
+      if (!hit && State.boss && !State.boss.dead){
+        if (Util.dist(b.x, b.y, State.boss.x, State.boss.y) < b.r + State.boss.radius){
+          State.boss.takeDamage(b.dmg);
+          hit = true;
+        }
+      }
+      if (hit) b.life = 0;
+    } else {
+      // 敌对弹幕：伤害玩家与友方（魅惑）单位
+      let hit = false;
+      if (p.invuln <= 0 && !p.dead && Util.dist(p.x, p.y, b.x, b.y) < p.radius + b.r){
+        p.damage(b.dmg !== undefined ? b.dmg : CONFIG.boss.bulletDamage, b.x, b.y);
+        hit = true;
+      }
+      if (!hit){
+        for (const e of State.enemies){
+          if (e.dead || !e.charmed) continue;
+          if (Util.dist(b.x, b.y, e.x, e.y) < b.r + e.radius){
+            e.takeDamage(b.dmg !== undefined ? b.dmg : CONFIG.boss.bulletDamage);
+            if (e.dead) enemyDie(e);
+            hit = true; break;
+          }
+        }
+      }
+      if (hit) b.life = 0;
     }
   }
   State.ebullets = State.ebullets.filter(b => b.life > 0);
 }
 
 function enemyDie(e){
-  State.spawnParticles(e.x, e.y, '#ff5470', 10, 80, 0.5);
+  State.spawnParticles(e.x, e.y, e.charmed ? '#c07bff' : '#ff5470', 10, 80, 0.5);
   AudioFX.sfx('enemyDie');
   if (Math.random() < Galaxy.diff.enemyDrop){
     if (Math.random() < 0.5){
@@ -1762,18 +2291,145 @@ function enemyDie(e){
 
 function enemyContact(){
   const p = State.player;
-  if (p.invuln > 0 || p.dead) return;
+
+  // 1) 敌对单位接触玩家（魅惑单位不伤害玩家）
+  if (!(p.invuln > 0 || p.dead || playerInShield())){
+    for (const e of State.enemies){
+      if (e.dead || e.charmed) continue;
+      if (Util.dist(p.x, p.y, e.x, e.y) < p.radius + e.radius){
+        p.damage(CONFIG.enemy.contactDamage, e.x, e.y);
+        break;
+      }
+    }
+    if (State.boss && !State.boss.dead && p.invuln <= 0 && !p.dead){
+      if (Util.dist(p.x, p.y, State.boss.x, State.boss.y) < p.radius + State.boss.radius){
+        p.damage(CONFIG.boss.bulletDamage, State.boss.x, State.boss.y);
+      }
+    }
+  }
+
+  // 2) 敌对单位接触魅惑单位：魅惑单位受伤
   for (const e of State.enemies){
-    if (Util.dist(p.x, p.y, e.x, e.y) < p.radius + e.radius){
-      p.damage(CONFIG.enemy.contactDamage, e.x, e.y);
-      break;
+    if (e.dead || !e.charmed) continue;
+    for (const h of State.enemies){
+      if (h === e || h.dead || h.charmed) continue;
+      if (Util.dist(e.x, e.y, h.x, h.y) < e.radius + h.radius){
+        e.takeDamage(CONFIG.enemy.contactDamage);
+        if (e.dead) enemyDie(e);
+        break;
+      }
+    }
+    if (!e.dead && State.boss && !State.boss.dead){
+      if (Util.dist(e.x, e.y, State.boss.x, State.boss.y) < e.radius + State.boss.radius){
+        e.takeDamage(CONFIG.boss.bulletDamage);
+        if (e.dead) enemyDie(e);
+      }
     }
   }
-  if (State.boss && !State.boss.dead && p.invuln <= 0 && !p.dead){
-    if (Util.dist(p.x, p.y, State.boss.x, State.boss.y) < p.radius + State.boss.radius){
-      p.damage(CONFIG.boss.bulletDamage, State.boss.x, State.boss.y);
+
+  // 3) 魅惑单位接触敌对单位：敌对单位受伤（协助作战）
+  for (const e of State.enemies){
+    if (e.dead || !e.charmed) continue;
+    for (const h of State.enemies){
+      if (h === e || h.dead || h.charmed) continue;
+      if (Util.dist(e.x, e.y, h.x, h.y) < e.radius + h.radius){
+        h.takeDamage(CONFIG.enemy.contactDamage);
+        if (h.dead) enemyDie(h);
+      }
+    }
+    if (State.boss && !State.boss.dead){
+      if (Util.dist(e.x, e.y, State.boss.x, State.boss.y) < e.radius + State.boss.radius){
+        State.boss.takeDamage(CONFIG.enemy.contactDamage);
+      }
     }
   }
+}
+
+// —— 角色技能 ——
+function trySkill(){
+  const p = State.player;
+  if (!p || p.dead) return;
+  const skill = CONFIG.skins[selectedSkin].skill;
+  if (p.skillCd > 0) return;
+  let used = false;
+  if (skill.id === 'scorch') used = castScorch();
+  else if (skill.id === 'snow') used = castSnow();
+  else if (skill.id === 'charm') used = castCharm();
+  if (used){
+    p.skillCd = skill.cd;
+    AudioFX.sfx('skill');
+  }
+}
+
+// 炽热：锁定 6 个目标发射黄色激光，秒杀非 Boss，Boss 扣 10%
+function castScorch(){
+  const p = State.player;
+  const list = [];
+  const boss = (State.boss && !State.boss.dead) ? State.boss : null;
+  if (boss) list.push({ t:'boss', b: boss });
+  const cand = State.enemies.filter(e => !e.dead && !e.charmed);
+  cand.sort((a, b) => Util.dist(p.x, p.y, a.x, a.y) - Util.dist(p.x, p.y, b.x, b.y));
+  for (const e of cand){
+    if (list.length >= 6) break;
+    list.push({ t:'enemy', e });
+  }
+  if (!list.length) return false;
+  for (const t of list){
+    const tx = t.t === 'boss' ? t.b.x : t.e.x;
+    const ty = t.t === 'boss' ? t.b.y : t.e.y;
+    State.scorchLasers.push({ x1:p.x, y1:p.y, x2:tx, y2:ty, life:0.35, maxLife:0.35 });
+    if (t.t === 'boss'){
+      t.b.takeDamage(Math.max(1, Math.floor(t.b.maxHp * 0.1)));
+      State.spawnParticles(tx, ty, '#ffe066', 10, 90, 0.5);
+    } else {
+      t.e.dead = true;
+      State.spawnParticles(tx, ty, '#ffe066', 12, 100, 0.5);
+      enemyDie(t.e);
+    }
+  }
+  State.toast(`炽热！锁定 ${list.length} 个目标`, 1.8);
+  return true;
+}
+
+// 雪天：冻结所有敌怪 + 超大雪花，结束后破裂造成 50% 伤害
+function castSnow(){
+  const skill = CONFIG.skins[selectedSkin].skill;
+  State.snowT = skill.freeze || 2.5;
+  State.snowDur = State.snowT;
+  State.spawnParticles(CONFIG.CX, CONFIG.CY, '#cfe8ff', 22, 120, 0.8);
+  State.toast('雪天降临！所有敌怪被冰冻', 1.8);
+  return true;
+}
+
+function snowBreak(){
+  for (let i = 0; i < 36; i++){
+    State.spawnParticles(CONFIG.CX + Util.rand(-70, 70), CONFIG.CY + Util.rand(-70, 70), '#e8f4ff', 3, 90, 0.6);
+  }
+  let hit = 0, killed = 0;
+  for (const e of State.enemies){
+    if (e.dead) continue;
+    e.takeDamage(e.maxHp * 0.5);
+    hit++;
+    if (e.dead){ enemyDie(e); killed++; }
+  }
+  State.snowT = 0; State.snowDur = 0;
+  State.toast(`雪花破裂！${hit} 个敌怪受到 50% 伤害${killed ? ` · 击杀 ${killed}` : ''}`, 2.2);
+}
+
+// 魅惑：使 4 个非 Boss 单位变为友方
+function castCharm(){
+  let n = 0;
+  for (const e of State.enemies){
+    if (n >= 4) break;
+    if (e.dead || e.charmed) continue;
+    e.charmed = true;
+    e.flash = 0.2;
+    State.spawnParticles(e.x, e.y, '#c07bff', 14, 70, 0.6);
+    n++;
+  }
+  if (!n) return false;
+  State.toast(`魅惑 ${n} 个单位为你而战！`, 1.8);
+  return true;
 }
 
 // —— 收集 / 上缴 ——
@@ -1967,12 +2623,13 @@ function setupUI(){
   document.getElementById('convAllBtn').addEventListener('click', (e) => { convertGold('all'); e.currentTarget.blur(); });
   document.getElementById('upgConvOneBtn').addEventListener('click', (e) => { convertGold(1); e.currentTarget.blur(); });
   document.getElementById('upgConvAllBtn').addEventListener('click', (e) => { convertGold('all'); e.currentTarget.blur(); });
-  document.getElementById('codexBtn').addEventListener('click', () => { AudioFX.init(); openCodex(); });
+  document.getElementById('codexBtn').addEventListener('click', () => { AudioFX.init(); openCodex('title'); });
   document.getElementById('codexBackBtn').addEventListener('click', () => { closeCodex(); });
   document.getElementById('diffNormalBtn').addEventListener('click', (e) => { setDifficulty(false); e.currentTarget.blur(); });
   document.getElementById('diffHardBtn').addEventListener('click', (e) => { setDifficulty(true); e.currentTarget.blur(); });
   buildUpgradeUI();
   renderDifficulty();
+  buildSkinUI();
 }
 
 function buildUpgradeUI(){
@@ -2008,16 +2665,52 @@ function renderDifficulty(){
     : '普通：标准难度。';
 }
 
+// —— 角色 / 皮肤选择 ——
+function buildSkinUI(){
+  const box = document.getElementById('skinOptions');
+  box.innerHTML = '';
+  CONFIG.skins.forEach((s, i) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'skin-btn';
+    btn.style.background = `radial-gradient(circle, ${s.glow}66 0%, ${s.glow}18 58%, transparent 100%)`;
+    btn.title = s.name;
+    btn.innerHTML = `<span class="skin-orb" style="background:${s.player}; box-shadow:0 0 8px ${s.glow};"></span>`;
+    btn.addEventListener('click', (e) => { setSkin(i); e.currentTarget.blur(); });
+    box.appendChild(btn);
+  });
+  renderSkin();
+}
+
+function setSkin(i){
+  selectedSkin = i;
+  renderSkin();
+  AudioFX.sfx('pickup');
+}
+
+function renderSkin(){
+  document.querySelectorAll('#skinOptions .skin-btn').forEach((b, i) => {
+    b.classList.toggle('selected', i === selectedSkin);
+  });
+  const skin = CONFIG.skins[selectedSkin];
+  document.getElementById('skinName').textContent = skin.name;
+  document.getElementById('skillDesc').innerHTML = `<b>${skin.skill.icon} ${skin.skill.name}</b>（${skin.skill.cd} 秒充能）：${skin.skill.desc}`;
+}
+
 // —— 图鉴 ——
-function openCodex(){
+function openCodex(fromMode){
+  State.codexReturn = fromMode || 'title';
   State.mode = 'codex';
   renderCodex();
   showScreen('codex');
 }
 
 function closeCodex(){
-  State.mode = 'title';
-  showScreen('title');
+  const back = State.codexReturn || 'title';
+  State.mode = back;
+  if (back === 'paused') showScreen('pause');
+  else if (back === 'title') showScreen('title');
+  else showScreen(null);   // 'playing'
 }
 
 function codexEntryHTML(discovered, name, icon, desc){
@@ -2044,11 +2737,17 @@ function renderCodex(){
     const c = CONFIG.passives[id];
     html += codexEntryHTML(Meta.codex.passives[id], c.name, c.icon, c.desc);
   }
+  html += '<div class="cx-sec">特殊机制</div>';
+  for (const id of Object.keys(CONFIG.mechanicCodex)){
+    const c = CONFIG.mechanicCodex[id];
+    html += codexEntryHTML(Meta.codex.mechanics[id], c.name, c.icon, c.desc);
+  }
   const found =
     Object.values(Meta.codex.enemies).filter(Boolean).length +
     Object.values(Meta.codex.weapons).filter(Boolean).length +
-    Object.values(Meta.codex.passives).filter(Boolean).length;
-  const total = Object.keys(CONFIG.enemyCodex).length + Object.keys(CONFIG.weapons).length + Object.keys(CONFIG.passives).length;
+    Object.values(Meta.codex.passives).filter(Boolean).length +
+    Object.values(Meta.codex.mechanics).filter(Boolean).length;
+  const total = Object.keys(CONFIG.enemyCodex).length + Object.keys(CONFIG.weapons).length + Object.keys(CONFIG.passives).length + Object.keys(CONFIG.mechanicCodex).length;
   body.innerHTML = `<div class="cx-count">已发现 ${found}/${total}</div>` + html;
 }
 
@@ -2101,9 +2800,11 @@ function updateHUD(){
 
   renderWeaponSlots(p);
   renderPassiveSlots(p);
+  renderSkillSlot(p);
 
   if (State.boss){
     showBossBar(true);
+    document.getElementById('bossName').textContent = State.boss.name || '恒星守护者';
     document.getElementById('bossfill').style.width = (State.boss.hp / State.boss.maxHp * 100) + '%';
   } else {
     showBossBar(false);
@@ -2153,6 +2854,24 @@ function renderPassiveSlots(p){
     }
     box.appendChild(slot);
   }
+}
+
+function renderSkillSlot(p){
+  const el = document.getElementById('skillSlot');
+  const skin = CONFIG.skins[selectedSkin];
+  const s = skin.skill;
+  const cd = p ? p.skillCd : 0;
+  if (cd > 0){
+    el.textContent = `${s.icon} ${s.name} ${Math.ceil(cd)}s`;
+    el.title = `技能：${s.name}（充能中）\n${s.desc}`;
+    el.classList.add('cd');
+  } else {
+    el.textContent = `${s.icon} ${s.name} [R]`;
+    el.title = `技能：${s.name}（按 R 触发）\n${s.desc}`;
+    el.classList.remove('cd');
+  }
+  const btn = document.getElementById('btnSkill');
+  if (btn) btn.textContent = cd > 0 ? Math.ceil(cd) : s.icon;
 }
 
 boot();
