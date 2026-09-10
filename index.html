@@ -239,16 +239,18 @@ button { touch-action: manipulation; }
 #btnLeft  { left: 14px;  bottom: calc(52px + env(safe-area-inset-bottom)); }
 #btnRight { left: 102px; bottom: calc(52px + env(safe-area-inset-bottom)); }
 
-/* 右下：跳跃/下降/飞行 */
-#btnUp   { right: 14px; bottom: calc(126px + env(safe-area-inset-bottom)); width: 72px; height: 72px; font-size: 30px; }
-#btnDown { right: 108px; bottom: calc(56px + env(safe-area-inset-bottom)); }
-#btnFly  { right: 14px; bottom: calc(40px + env(safe-area-inset-bottom)); font-size: 18px; }
+/* 右下：跳跃 / 技能（下降、飞行键已隐藏） */
+#btnUp    { right: 14px; bottom: calc(40px + env(safe-area-inset-bottom)); width: 72px; height: 72px; font-size: 30px; }
+#btnSkill { right: 108px; bottom: calc(56px + env(safe-area-inset-bottom)); }
+
+/* 已隐藏：下降 / 飞行 */
+#btnDown  { display: none; }
+#btnFly   { display: none; }
 
 /* 顶部：暂停 / 静音 / 图鉴 */
 #btnPause { top: calc(12px + env(safe-area-inset-top)); right: 12px; }
 #btnMute  { top: calc(12px + env(safe-area-inset-top)); right: 68px; }
 #btnCodex { top: calc(12px + env(safe-area-inset-top)); right: 124px; }
-#btnSkill { top: calc(12px + env(safe-area-inset-top)); left: 12px; }
 
 /* 旋转提示（仅竖屏游玩时显示，不阻挡操作） */
 #rotateHint {
@@ -380,7 +382,7 @@ button { touch-action: manipulation; }
     <div class="touch-btn top-btn" id="btnPause">⏸</div>
     <div class="touch-btn top-btn" id="btnCodex">📖</div>
     <div class="touch-btn top-btn" id="btnMute">🔊</div>
-    <div class="touch-btn top-btn" id="btnSkill">✦</div>
+    <div class="touch-btn" id="btnSkill">✦</div>
   </div>
   <div id="rotateHint">📱 建议横屏游玩（旋转手机）</div>
 </div>
