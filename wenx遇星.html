@@ -253,10 +253,16 @@ button:hover { background:#ffe066; }
       </div>
       <div class="title-btns">
         <button id="startBtn">开始游戏 (Enter)</button>
+        <button id="continueBtn" class="hidden">继续游戏</button>
         <button id="codexBtn">图鉴</button>
       </div>
     </div>
-    <div id="pause" class="screen hidden"><h1>已暂停</h1><p>按 Esc / P 继续</p></div>
+    <div id="pause" class="screen hidden">
+      <h1>已暂停</h1>
+      <p>按 Esc / P 继续</p>
+      <button id="saveBtn">保存进度</button>
+      <p id="saveStatus" class="sub"></p>
+    </div>
     <div id="gameover" class="screen hidden">
       <h1>光球熄灭</h1>
       <p id="goInfo"></p>
@@ -1842,11 +1848,174 @@ const Meta = {
 let hardMode = false;   // 是否困难模式
 let selectedSkin = 0;   // 当前选择的光球皮肤索引
 let last = 0;
-let enemyTimer = 0, resTimer = 0, eqTimer = 0;
+let enemyTimer = 0, resTimer = 0, eqTimer = 0, metaSaveT = 0;
+
+// —— 存档系统：跨局进度(Meta)持久化 + 本局快照 ——
+const _svNum = (v, d) => (typeof v === 'number' && isFinite(v)) ? v : d;
+const _svClamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+const Save = {
+  META_KEY: 'yuxing_meta_v1',
+  RUN_KEY: 'yuxing_run_v1',
+
+  // 跨局进度自动存档（金币/钻石/加点/图鉴/皮肤/难度）
+  saveMeta(){
+    try {
+      localStorage.setItem(this.META_KEY, JSON.stringify({
+        resources: Meta.resources, gold: Meta.gold, diamond: Meta.diamond,
+        deaths: Meta.deaths, freePoints: Meta.freePoints, weaponSlots: Meta.weaponSlots,
+        levels: Meta.levels, codex: Meta.codex,
+        hardMode: hardMode, selectedSkin: selectedSkin,
+      }));
+    } catch (e) {}
+  },
+
+  loadMeta(){
+    try {
+      const d = JSON.parse(localStorage.getItem(this.META_KEY));
+      if (!d) return false;
+      Meta.resources = _svNum(d.resources, Meta.resources);
+      Meta.gold = _svNum(d.gold, Meta.gold);
+      Meta.diamond = _svNum(d.diamond, Meta.diamond);
+      Meta.deaths = _svNum(d.deaths, Meta.deaths);
+      Meta.freePoints = _svNum(d.freePoints, Meta.freePoints);
+      Meta.weaponSlots = _svClamp(_svNum(d.weaponSlots, CONFIG.economy.weaponSlotBase), CONFIG.economy.weaponSlotBase, CONFIG.economy.weaponSlotMax);
+      if (d.levels) for (const k of Object.keys(Meta.levels)) Meta.levels[k] = _svNum(d.levels[k], 0);
+      if (d.codex) for (const sec of Object.keys(Meta.codex)) for (const k of Object.keys(Meta.codex[sec])) Meta.codex[sec][k] = !!(d.codex[sec] && d.codex[sec][k]);
+      hardMode = !!d.hardMode;
+      selectedSkin = _svClamp(_svNum(d.selectedSkin, 0), 0, CONFIG.skins.length - 1);
+      return true;
+    } catch (e) { return false; }
+  },
+
+  // 本局快照：保存当前对局，之后可随时继续
+  saveRun(){
+    const p = State.player;
+    if (!p || p.dead || (State.mode !== 'playing' && State.mode !== 'paused')) return false;
+    const boss = State.boss;
+    const data = {
+      hardMode: hardMode, selectedSkin: selectedSkin,
+      galaxyIndex: Galaxy.galaxyIndex,
+      time: State.time, resourcesBanked: State.resourcesBanked, prevTheta: State.prevTheta,
+      snowT: State.snowT, snowDur: State.snowDur,
+      enemyTimer: enemyTimer, resTimer: resTimer, eqTimer: eqTimer,
+      player: {
+        theta: p.theta, d: p.d, dtheta: p.dtheta, dd: p.dd,
+        hp: p.hp, mp: p.mp, shield: p.shield,
+        flying: p.flying, grounded: p.grounded, facing: p.facing,
+        invuln: p.invuln, carried: p.carried, skillCd: p.skillCd,
+        weapons: p.weapons.map(w => ({ id: w.id, level: w.level, cd: w.cd })),
+        passives: p.passives.map(f => ({ id: f.id, level: f.level })),
+      },
+      enemies: State.enemies.map(e => ({ type: e.type, theta: e.theta, d: e.d, hp: e.hp, vx: e.vx, vy: e.vy, dtheta: e.dtheta, flash: e.flash, charmed: e.charmed, charmT: e.charmT, shootT: e.shootT })),
+      resources: State.resources.map(r => ({ theta: r.theta, d: r.d, baseD: r.baseD, phase: r.phase, taken: r.taken })),
+      equipments: State.equipments.map(eq => ({ kind: eq.kind, id: eq.id, theta: eq.theta, d: eq.d, baseD: eq.baseD, phase: eq.phase, taken: eq.taken })),
+      ebullets: State.ebullets.map(b => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, r: b.r, life: b.life, dmg: b.dmg, color: b.color, friendly: b.friendly })),
+      boss: boss ? {
+        hp: boss.hp, anchorX: boss.anchorX, anchorY: boss.anchorY, x: boss.x, y: boss.y,
+        t: boss.t, shootT: boss.shootT, spawnT: boss.spawnT, flash: boss.flash,
+        active: boss.active, dead: boss.dead,
+        laser: { state: boss.laser.state, t: boss.laser.t, angle: boss.laser.angle },
+        laserT: boss.laserT, purpleT: boss.purpleT, teleportT: boss.teleportT,
+        shieldTimer: boss.shieldTimer,
+        shield: boss.shield ? { x: boss.shield.x, y: boss.shield.y, radius: boss.shield.radius, life: boss.shield.life, maxLife: boss.shield.maxLife, expired: boss.shield.expired } : null,
+      } : null,
+    };
+    try { localStorage.setItem(this.RUN_KEY, JSON.stringify(data)); this.saveMeta(); return true; }
+    catch (e) { return false; }
+  },
+
+  hasRun(){ try { return !!localStorage.getItem(this.RUN_KEY); } catch (e) { return false; } },
+
+  clearRun(){ try { localStorage.removeItem(this.RUN_KEY); } catch (e) {} },
+
+  loadRun(){
+    try {
+      const d = JSON.parse(localStorage.getItem(this.RUN_KEY));
+      if (!d || !d.player) return false;
+      hardMode = !!d.hardMode;
+      selectedSkin = _svClamp(_svNum(d.selectedSkin, 0), 0, CONFIG.skins.length - 1);
+      Galaxy.start(_svClamp(_svNum(d.galaxyIndex, 0), 0, CONFIG.galaxies.length - 1));
+
+      // 玩家
+      const sp = d.player;
+      const p = new Player();
+      p.theta = _svNum(sp.theta, 0); p.d = _svNum(sp.d, Galaxy.surfaceR(0) + p.radius);
+      p.dtheta = _svNum(sp.dtheta, 0); p.dd = _svNum(sp.dd, 0);
+      p.hp = _svClamp(_svNum(sp.hp, p.maxHp), 0, p.maxHp);
+      p.mp = _svClamp(_svNum(sp.mp, p.maxMp), 0, p.maxMp);
+      p.shield = _svClamp(_svNum(sp.shield, p.maxShield), 0, p.maxShield);
+      p.flying = !!sp.flying; p.grounded = !!sp.grounded; p.facing = _svNum(sp.facing, 1);
+      p.invuln = _svNum(sp.invuln, 0); p.carried = _svNum(sp.carried, 0); p.skillCd = _svNum(sp.skillCd, 0);
+      p.weapons = (sp.weapons || []).filter(w => CONFIG.weapons[w.id]).map(w => ({ id: w.id, level: _svNum(w.level, 1), cd: _svNum(w.cd, 0) }));
+      p.passives = (sp.passives || []).filter(f => CONFIG.passives[f.id]).map(f => ({ id: f.id, level: _svNum(f.level, 1) }));
+      p.syncXY();
+      State.player = p;
+
+      State.enemies = (d.enemies || []).map(o => { const e = new Enemy(o.type, o.theta, o.d); e.hp = _svNum(o.hp, e.maxHp); e.vx = _svNum(o.vx, 0); e.vy = _svNum(o.vy, 0); e.dtheta = _svNum(o.dtheta, 0); e.flash = _svNum(o.flash, 0); e.charmed = !!o.charmed; e.charmT = _svNum(o.charmT, e.charmT); e.shootT = _svNum(o.shootT, e.shootT); e.syncXY(); return e; });
+      State.resources = (d.resources || []).map(o => { const r = new Resource(o.theta, o.d); r.baseD = _svNum(o.baseD, r.baseD); r.phase = _svNum(o.phase, r.phase); r.taken = !!o.taken; r.syncXY(); return r; });
+      State.equipments = (d.equipments || []).map(o => { const eq = new EquipmentPickup(o.kind, o.id, o.theta, o.d); eq.baseD = _svNum(o.baseD, eq.baseD); eq.phase = _svNum(o.phase, eq.phase); eq.taken = !!o.taken; eq.syncXY(); return eq; });
+      State.ebullets = (d.ebullets || []).map(b => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, r: b.r, life: b.life, dmg: b.dmg, color: b.color, friendly: b.friendly }));
+      State.projectiles = []; State.particles = []; State.texts = []; State.scorchLasers = [];
+
+      // Boss
+      State.boss = null;
+      if (d.boss){
+        const b = new Boss();
+        b.hp = _svNum(d.boss.hp, b.maxHp); b.anchorX = _svNum(d.boss.anchorX, b.x); b.anchorY = _svNum(d.boss.anchorY, b.y);
+        b.x = _svNum(d.boss.x, b.anchorX); b.y = _svNum(d.boss.y, b.anchorY); b.t = _svNum(d.boss.t, 0);
+        b.shootT = _svNum(d.boss.shootT, b.shootT); b.spawnT = _svNum(d.boss.spawnT, b.spawnT); b.flash = _svNum(d.boss.flash, 0);
+        b.active = !!d.boss.active; b.dead = !!d.boss.dead;
+        b.laser = d.boss.laser || { state:'idle', t:0, angle:0 };
+        b.laserT = _svNum(d.boss.laserT, b.laserT);
+        b.purpleT = _svNum(d.boss.purpleT, b.purpleT); b.teleportT = _svNum(d.boss.teleportT, b.teleportT);
+        b.shieldTimer = _svNum(d.boss.shieldTimer, b.shieldTimer);
+        b.shield = null;
+        if (d.boss.shield){
+          const s = d.boss.shield;
+          const sh = new BossShield(s.x, s.y, s.radius);
+          sh.life = _svNum(s.life, sh.maxLife); sh.maxLife = _svNum(s.maxLife, sh.maxLife); sh.expired = !!s.expired;
+          b.shield = sh;
+        }
+        State.boss = b;
+      }
+
+      State.resourcesBanked = _svNum(d.resourcesBanked, 0);
+      State.prevTheta = _svNum(d.prevTheta, 0);
+      State.time = _svNum(d.time, 0);
+      State.snowT = _svNum(d.snowT, 0); State.snowDur = _svNum(d.snowDur, 0);
+      enemyTimer = _svNum(d.enemyTimer, 0); resTimer = _svNum(d.resTimer, 0); eqTimer = _svNum(d.eqTimer, 0);
+      State.msg = ''; State.msgT = 0;
+
+      State.mode = 'playing';
+      renderDifficulty();
+      renderSkin();
+      refreshCurrency();
+      showScreen(null);
+      State.toast('已读取存档', 1.6);
+      return true;
+    } catch (e) { return false; }
+  },
+
+  refreshContinueBtn(){
+    const btn = document.getElementById('continueBtn');
+    if (btn) btn.classList.toggle('hidden', !this.hasRun());
+  },
+};
+
+function setSaveStatus(text){
+  const el = document.getElementById('saveStatus');
+  if (!el) return;
+  el.textContent = text;
+  clearTimeout(setSaveStatus._t);
+  setSaveStatus._t = setTimeout(() => { el.textContent = ''; }, 1800);
+}
 
 function boot(){
+  Save.loadMeta();   // 读取跨局进度（金币/钻石/加点/图鉴/皮肤/难度）
   Render.init();
   Input.init();
+  window.addEventListener('pagehide', () => Save.saveMeta());
   for (let i = 0; i < 90; i++){
     State.stars.push({ x: Util.rand(0, CONFIG.WIDTH), y: Util.rand(0, CONFIG.HEIGHT), s: Util.randInt(1, 2), p: Math.random() * Math.PI * 2 });
   }
@@ -1862,6 +2031,10 @@ function loop(ts){
   let dt = (ts - last) / 1000;
   last = ts;
   dt = Math.min(dt, 0.05);
+
+  // 跨局进度自动存档（每 2 秒）
+  metaSaveT -= dt;
+  if (metaSaveT <= 0){ metaSaveT = 2; Save.saveMeta(); }
 
   Input.update();
   update(dt);
@@ -1905,6 +2078,7 @@ function update(dt){
     if (State.warpT <= 0){
       if (Galaxy.galaxyIndex + 1 >= CONFIG.galaxies.length){
         State.mode = 'victory';
+        Save.clearRun();   // 通关，删除快照
         AudioFX.sfx('win');
         document.getElementById('winInfo').textContent = `你穿越了 ${CONFIG.galaxies.length} 个星系，抵达宇宙的尽头。`;
         showScreen('victory');
@@ -2004,6 +2178,7 @@ function update(dt){
 
 // —— 流程 ——
 function startRun(){
+  Save.clearRun();   // 开始新的一局，废弃旧存档
   Galaxy.start(0);
   AudioFX.init();
   showUpgrade();
@@ -2134,6 +2309,7 @@ function setupGalaxy(){
 }
 
 function gameOver(){
+  Save.clearRun();   // 本局结束，删除快照
   State.mode = 'gameover';
   AudioFX.sfx('lose');
   // 累计死亡，每 N 次获得 1 次免费加点
@@ -2629,6 +2805,15 @@ function setupUI(){
   document.getElementById('upgConvAllBtn').addEventListener('click', (e) => { convertGold('all'); e.currentTarget.blur(); });
   document.getElementById('codexBtn').addEventListener('click', () => { AudioFX.init(); openCodex('title'); });
   document.getElementById('codexBackBtn').addEventListener('click', () => { closeCodex(); });
+  document.getElementById('saveBtn').addEventListener('click', (e) => {
+    setSaveStatus(Save.saveRun() ? '进度已保存 ✓' : '保存失败');
+    e.currentTarget.blur();
+  });
+  document.getElementById('continueBtn').addEventListener('click', (e) => {
+    AudioFX.init();
+    Save.loadRun();
+    e.currentTarget.blur();
+  });
   document.getElementById('diffNormalBtn').addEventListener('click', (e) => { setDifficulty(false); e.currentTarget.blur(); });
   document.getElementById('diffHardBtn').addEventListener('click', (e) => { setDifficulty(true); e.currentTarget.blur(); });
   buildUpgradeUI();
@@ -2756,6 +2941,7 @@ function renderCodex(){
 }
 
 function showScreen(name){
+  if (name === 'title') Save.refreshContinueBtn();   // 有存档才显示「继续游戏」
   const overlay = document.getElementById('overlay');
   const hud = document.getElementById('hud');
   const screens = ['title', 'pause', 'gameover', 'galaxycomplete', 'victory', 'upgrade', 'equipPrompt', 'codex'];
