@@ -1843,6 +1843,14 @@ const Meta = {
   discoverWeapon(id){ this.codex.weapons[id] = true; },
   discoverPassive(id){ this.codex.passives[id] = true; },
   discoverMechanic(id){ this.codex.mechanics[id] = true; },
+
+  // 新建档 / 通关最后一关后：清零本局资源/金币/钻石/加点等级，避免不同存档间继承
+  resetProgress(){
+    this.resources = 0;
+    this.gold = 0;
+    this.diamond = 0;
+    for (const k of Object.keys(this.levels)) this.levels[k] = 0;
+  },
 };
 
 let hardMode = false;   // 是否困难模式
@@ -2078,7 +2086,9 @@ function update(dt){
     if (State.warpT <= 0){
       if (Galaxy.galaxyIndex + 1 >= CONFIG.galaxies.length){
         State.mode = 'victory';
-        Save.clearRun();   // 通关，删除快照
+        Save.clearRun();        // 通关，删除快照
+        Meta.resetProgress();   // 通关最后一关：清零资源/金币/钻石/加点等级
+        Save.saveMeta();
         AudioFX.sfx('win');
         document.getElementById('winInfo').textContent = `你穿越了 ${CONFIG.galaxies.length} 个星系，抵达宇宙的尽头。`;
         showScreen('victory');
@@ -2178,7 +2188,9 @@ function update(dt){
 
 // —— 流程 ——
 function startRun(){
-  Save.clearRun();   // 开始新的一局，废弃旧存档
+  Save.clearRun();        // 开始新的一局，废弃旧存档
+  Meta.resetProgress();   // 新建档：清零资源/金币/钻石/加点等级
+  Save.saveMeta();        // 立即持久化清零结果
   Galaxy.start(0);
   AudioFX.init();
   showUpgrade();
