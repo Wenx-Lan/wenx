@@ -353,15 +353,19 @@ function collectResources(){
   for (const r of State.resources){
     if (r.taken) continue;
     if (Util.dist(p.x, p.y, r.x, r.y) < pr + r.r){
+      if (p.carried >= CONFIG.player.carryCap){
+        // 背包已满：资源留在原地，不再自动上缴，提示玩家返回主恒星上缴
+        if (!r.fullHint || State.time - r.fullHint > 1.6){
+          r.fullHint = State.time;
+          State.texts.push(new FloatText(r.x, r.y, '背包已满', '#ff6b6b'));
+          State.toast('背包已满，请将资源上缴至主恒星', 1.8);
+        }
+        continue;
+      }
       r.taken = true;
       State.spawnParticles(r.x, r.y, CONFIG.colors.resource, 6, 60, 0.4);
-      if (p.carried < CONFIG.player.carryCap){
-        p.carried++;
-        AudioFX.sfx('collect');
-      } else {
-        bankResources(1);
-        State.texts.push(new FloatText(r.x, r.y, '+1', CONFIG.colors.resource));
-      }
+      p.carried++;
+      AudioFX.sfx('collect');
     }
   }
   State.resources = State.resources.filter(r => !r.taken);
