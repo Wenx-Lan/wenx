@@ -1992,12 +1992,16 @@ const Meta = {
   discoverPassive(id){ this.codex.passives[id] = true; },
   discoverMechanic(id){ this.codex.mechanics[id] = true; },
 
-  // 新建档 / 通关最后一关后：清零本局资源/金币/钻石/加点等级，避免不同存档间继承
+  // 新建档 / 通关最后一关后：完全清零本局进度，避免不同存档间继承
   resetProgress(){
     this.resources = 0;
     this.gold = 0;
     this.diamond = 0;
+    this.deaths = 0;
+    this.freePoints = 0;
+    this.weaponSlots = CONFIG.economy.weaponSlotBase;
     for (const k of Object.keys(this.levels)) this.levels[k] = 0;
+    for (const sec of Object.keys(this.codex)) for (const k of Object.keys(this.codex[sec])) this.codex[sec][k] = false;
   },
 };
 
