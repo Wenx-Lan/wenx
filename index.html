@@ -333,8 +333,6 @@ button { touch-action: manipulation; }
       <h1>已暂停</h1>
       <p>按 Esc / P 继续</p>
       <button id="resumeBtn">继续</button>
-      <button id="saveBtn">保存进度</button>
-      <p id="saveStatus" class="sub"></p>
     </div>
     <div id="gameover" class="screen hidden">
       <h1>光球熄灭</h1>
@@ -2223,14 +2221,6 @@ const Save = {
   },
 };
 
-function setSaveStatus(text){
-  const el = document.getElementById('saveStatus');
-  if (!el) return;
-  el.textContent = text;
-  clearTimeout(setSaveStatus._t);
-  setSaveStatus._t = setTimeout(() => { el.textContent = ''; }, 1800);
-}
-
 function boot(){
   Save.loadMeta();   // 读取跨局进度（金币/钻石/加点/图鉴/皮肤/难度）
   Render.init();
@@ -2553,6 +2543,7 @@ function gameOver(){
 }
 
 function galaxyComplete(){
+  Save.saveRun();        // 自动存档：boss 死亡动画结束后、加点界面弹出前
   State.mode = 'galaxycomplete';
   State.warpT = 2.6;
   AudioFX.sfx('warp');
@@ -3036,10 +3027,6 @@ function setupUI(){
   document.getElementById('upgConvAllBtn').addEventListener('click', (e) => { convertGold('all'); e.currentTarget.blur(); });
   document.getElementById('codexBtn').addEventListener('click', () => { AudioFX.init(); openCodex('title'); });
   document.getElementById('codexBackBtn').addEventListener('click', () => { closeCodex(); });
-  document.getElementById('saveBtn').addEventListener('click', (e) => {
-    setSaveStatus(Save.saveRun() ? '进度已保存 ✓' : '保存失败');
-    e.currentTarget.blur();
-  });
   document.getElementById('continueBtn').addEventListener('click', (e) => {
     AudioFX.init();
     Save.loadRun();
