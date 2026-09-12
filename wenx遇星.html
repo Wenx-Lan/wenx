@@ -371,6 +371,7 @@ const CONFIG = {
     spiralInterval: 0.15,   // 每次发射间隔（秒）
     spiralStep: 0.32,       // 每次发射后整体旋转的弧度
     deathDuration: 0.9,     // 死亡内爆动画时长（秒）
+    deathBurst: 0.9,        // 终爆粒子播放时长（秒），播完才进入通关提示
     // 困难模式：蓝色激光技能
     laserInterval: 6.5,   // 激光冷却（秒）
     laserCharge: 0.9,     // 蓄力瞄准时间（秒）
@@ -1085,7 +1086,9 @@ class Boss {
     this.dead = false;
     this.dying = false;      // 死亡内爆进行中
     this.deathT = 0;         // 死亡内爆剩余时间
-    this.finished = false;   // 死亡动画播放完毕
+    this.finished = false;   // 死亡内爆收缩完毕
+    this.burstT = 0;         // 终爆粒子播放剩余时间
+    this.done = false;       // 终爆播放完毕，可触发通关提示
     this.laser = { state:'idle', t:0, angle:0 };  // 困难模式蓝色激光
     this.laserT = CONFIG.boss.laserInterval;
     // 第五、第六星系守护者：更换图案 + 紫色弹幕 + 瞬移
@@ -1276,27 +1279,33 @@ class Boss {
   // 死亡内爆：向内收缩、吸入粒子，结束后爆散消失
   updateDeath(dt){
     this.deathT -= dt;
-    const p = 1 - Util.clamp(this.deathT / CONFIG.boss.deathDuration, 0, 1);   // 0 → 1
-    this.radius = Math.max(0.5, CONFIG.boss.radius * (1 - p * p));   // 加速收缩
-    if (Math.random() < 0.4) this.flash = 0.12;                        // 内爆闪烁
-    // 内爆：从外圈向中心吸入红粒子
-    if (Math.random() < 0.65){
-      const a = Math.random() * Math.PI * 2;
-      const rr = this.radius + Util.rand(4, 20);
-      const sp = Util.rand(120, 280);
-      State.particles.push(new Particle(
-        this.x + Math.cos(a) * rr, this.y + Math.sin(a) * rr,
-        -Math.cos(a) * sp, -Math.sin(a) * sp,
-        Util.rand(0.25, 0.5), CONFIG.colors.projEnemy, Util.randInt(1, 3),
-      ));
-    }
-    if (this.deathT <= 0){
+    if (this.deathT > 0){
+      const p = 1 - Util.clamp(this.deathT / CONFIG.boss.deathDuration, 0, 1);   // 0 → 1
+      this.radius = Math.max(0.5, CONFIG.boss.radius * (1 - p * p));   // 加速收缩
+      if (Math.random() < 0.4) this.flash = 0.12;                        // 内爆闪烁
+      // 内爆：从外圈向中心吸入红粒子
+      if (Math.random() < 0.65){
+        const a = Math.random() * Math.PI * 2;
+        const rr = this.radius + Util.rand(4, 20);
+        const sp = Util.rand(120, 280);
+        State.particles.push(new Particle(
+          this.x + Math.cos(a) * rr, this.y + Math.sin(a) * rr,
+          -Math.cos(a) * sp, -Math.sin(a) * sp,
+          Util.rand(0.25, 0.5), CONFIG.colors.projEnemy, Util.randInt(1, 3),
+        ));
+      }
+    } else if (!this.finished){
       // 终爆：向外爆散 + 白闪 + 震屏
       State.spawnParticles(this.x, this.y, CONFIG.colors.projEnemy, 40, 200, 0.9);
       State.spawnParticles(this.x, this.y, '#ffffff', 14, 140, 0.5);
       State.addShake(10);
       State.flash = Math.max(State.flash, 0.55);
       this.finished = true;
+      this.burstT = CONFIG.boss.deathBurst;   // 终爆粒子播完后再进入通关提示
+    } else {
+      // 终爆粒子播放中：等其播完再触发通关提示，保证死亡动画完整播放
+      this.burstT -= dt;
+      if (this.burstT <= 0) this.done = true;
     }
   }
   takeDamage(d){
@@ -2223,7 +2232,7 @@ function update(dt){
   if (State.boss){
     State.boss.update(dt);
     if (State.boss.dead && !State.boss.dying){ galaxyComplete(); return; }
-    if (State.boss.finished){ galaxyComplete(); return; }
+    if (State.boss.done){ galaxyComplete(); return; }
   }
 
   collectResources();
